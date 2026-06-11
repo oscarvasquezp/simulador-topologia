@@ -2,11 +2,32 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Simulador Topología v5 — Red Transporte Lambayeque</title>
+<title>Estado Red Acceso — Lambayeque v6</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/libs/pptxgen.bundle.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow:hidden}
-#app{display:flex;height:100vh;width:100vw}
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow:hidden;height:100vh}
+
+/* ── NAV BAR ─────────────────────────────────────────── */
+#nav{position:fixed;top:0;left:0;right:0;height:42px;background:#161b22;border-bottom:1px solid #21262d;display:flex;align-items:center;padding:0 10px;gap:6px;z-index:2000}
+.tb{padding:5px 14px;border-radius:16px;border:none;cursor:pointer;font-family:inherit;font-size:11px;font-weight:600;background:transparent;color:#8b949e;transition:.15s}
+.tb.active{background:#1f6feb;color:#fff}
+.tb:hover:not(.active){background:#1c2128;color:#e6edf3}
+#di{flex:1;display:flex;gap:10px;justify-content:center;overflow:hidden}
+.di-item{font-size:9.5px;color:#6b7280;background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:3px 9px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+#btn-act{padding:5px 12px;border-radius:7px;border:1px solid #374151;background:#1f2937;color:#e6edf3;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit;transition:.15s;white-space:nowrap}
+#btn-act:hover{background:#374151}
+#btn-act:disabled{opacity:.5;cursor:default}
+
+/* ── TABS ────────────────────────────────────────────── */
+.tab{position:fixed;top:42px;left:0;right:0;bottom:0;display:none}
+.tab.active{display:flex}
+#tab-sim{flex-direction:row}
+#tab-dash{flex-direction:column;overflow:hidden}
+
+/* ── SIMULATOR (from v5, adapted) ───────────────────── */
+#app{display:flex;height:100%;width:100%}
 #panel{width:278px;min-width:278px;background:#161b22;border-right:1px solid #21262d;display:flex;flex-direction:column;z-index:10}
 #ph{padding:11px 14px;background:linear-gradient(135deg,#1a2332,#0f172a);border-bottom:1px solid #21262d}
 #ph h1{font-size:12px;font-weight:700;color:#58a6ff}
@@ -28,10 +49,47 @@ body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow
 #lista{flex:1;overflow-y:auto;padding:4px 10px 6px}
 #lista::-webkit-scrollbar{width:3px}
 #lista::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
-.ci{padding:5px 8px;border-radius:6px;margin-bottom:3px;display:flex;align-items:center;gap:7px;background:#1a0e0e;border:1px solid #7f1d1d}
+.ci{border-radius:6px;margin-bottom:3px;background:#1a0e0e;border:1px solid #7f1d1d;overflow:hidden}
+.ci-hdr{padding:5px 8px;display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
+.ci-hdr:hover{background:#2d1515}
+.ci-arr{font-size:9px;color:#6b7280;flex-shrink:0;width:10px;transition:.15s;font-family:monospace}
 .ci .ro{font-family:monospace;font-size:9px;font-weight:700;padding:2px 5px;border-radius:4px;background:#ef4444;color:#fff;flex-shrink:0;min-width:30px;text-align:center}
 .ci .no{font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ci .re{font-size:9px;color:#6b7280}
+.ci-bdy{padding:6px 8px 8px 44px;border-top:1px solid #2d1515;display:none}
+.ci-bdy.open{display:block}
+.ci-sub{font-size:10px;color:#8b949e;display:flex;gap:10px;flex-wrap:wrap}
+.ci-sub span{display:flex;align-items:center;gap:3px}
+.ci-man{font-size:8px;color:#374151;border:1px solid #374151;border-radius:4px;padding:1px 5px;margin-left:auto}
+/* Override modal */
+#modal-ovr{position:fixed;inset:0;background:#00000080;z-index:5000;display:none;align-items:center;justify-content:center}
+#modal-ovr.open{display:flex}
+#modal-box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:22px 24px;width:320px;max-width:90vw}
+#modal-box h3{font-size:13px;color:#e6edf3;margin-bottom:14px}
+.mo-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;border:1px solid transparent}
+.mo-row:hover{background:#1c2128}.mo-row input{accent-color:#58a6ff}
+.mo-row.sel{border-color:#1f4a8a;background:#0d1b31}
+.mo-lbl{font-size:12px;font-weight:600}.mo-desc{font-size:10px;color:#6b7280;margin-left:auto}
+#modal-nota{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:7px;padding:8px 10px;color:#e6edf3;font-family:inherit;font-size:11px;resize:vertical;min-height:50px;margin-top:10px}
+.modal-btns{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
+.mbtn{padding:7px 16px;border-radius:7px;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit}
+.mbtn-pri{background:#1f6feb;color:#fff}.mbtn-pri:hover{background:#388bfd}
+.mbtn-sec{background:#1f2937;color:#8b949e;border:1px solid #374151}.mbtn-sec:hover{background:#374151;color:#e6edf3}
+/* Social panel */
+#soc-panel{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:12px 14px;margin:10px 14px 0;flex-shrink:0}
+#soc-panel h4{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.soc-item{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #21262d;font-size:11px}
+.soc-item:last-child{border-bottom:none}
+.soc-code{font-family:monospace;font-size:10px;color:#f97316;font-weight:700}
+.soc-name{flex:1;color:#cbd5e1}
+.soc-rm{padding:3px 9px;border-radius:5px;border:1px solid #451a03;background:#1a0a0a;color:#f97316;cursor:pointer;font-size:10px;font-weight:600;font-family:inherit}
+.soc-rm:hover{background:#451a03}
+#btn-add-soc{width:100%;padding:6px;background:transparent;border:1px dashed #374151;border-radius:7px;color:#6b7280;cursor:pointer;font-size:11px;font-family:inherit;margin-top:6px;transition:.15s}
+#btn-add-soc:hover{background:#1c2128;color:#e6edf3;border-color:#58a6ff}
+/* Add social form */
+#soc-form{margin-top:8px;display:none}
+.soc-inp{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:7px;padding:7px 10px;color:#e6edf3;font-family:inherit;font-size:11px;margin-bottom:6px}
+.soc-form-btns{display:flex;gap:6px}
 #ctrl{padding:10px 14px;border-top:1px solid #21262d;flex-shrink:0}
 .btn{width:100%;padding:7px 10px;border-radius:7px;border:none;cursor:pointer;font-family:inherit;font-size:11px;font-weight:600;margin-bottom:5px;transition:.15s;display:flex;align-items:center;justify-content:center;gap:6px}
 .br{background:#1f2937;color:#e6edf3;border:1px solid #374151}.br:hover{background:#374151}
@@ -48,91 +106,237 @@ canvas{display:block}
 #inf.ok{border:1px solid #22c55e;color:#22c55e}
 #inf.err{border:1px solid #ef4444;color:#ef4444}
 #inf.warn{border:1px solid #f59e0b;color:#f59e0b}
-#tip{position:fixed;background:#1c2128;border:1px solid #30363d;border-radius:9px;padding:10px 14px;font-size:11px;pointer-events:none;display:none;z-index:2000;box-shadow:0 8px 28px #00000080;max-width:240px;line-height:1.5}
+#tip{position:fixed;background:#1c2128;border:1px solid #30363d;border-radius:9px;padding:10px 14px;font-size:11px;pointer-events:none;display:none;z-index:3000;box-shadow:0 8px 28px #00000080;max-width:240px;line-height:1.5}
 #tip h4{font-size:12px;font-weight:700;margin-bottom:5px}
-.tr{display:flex;gap:8px;margin-top:2px}.tl{color:#8b949e;flex-shrink:0}.tv{font-weight:600}
-.th{font-size:10px;margin-top:6px;font-style:italic}
+.tr2{display:flex;gap:8px;margin-top:2px}.tl{color:#8b949e;flex-shrink:0}.tv{font-weight:600}
+.th2{font-size:10px;margin-top:6px;font-style:italic}
 #ley{position:absolute;bottom:14px;right:14px;background:#161b22ee;border:1px solid #21262d;border-radius:9px;padding:11px 14px;font-size:10px;z-index:50}
 #ley h4{font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
 .li{display:flex;align-items:center;gap:7px;margin-bottom:4px}
 .ld{width:11px;height:11px;border-radius:50%;flex-shrink:0}
 .ll{width:24px;height:3px;flex-shrink:0;border-radius:2px}
 .lx{width:24px;height:0;border-top:3px dashed;flex-shrink:0}
+
+/* ── DASHBOARD ───────────────────────────────────────── */
+#kpi-row{display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid #21262d;flex-shrink:0;background:#0d1117}
+.kpi{flex:1;background:#161b22;border:1px solid #21262d;border-radius:10px;padding:10px 14px}
+.kv{font-size:30px;font-weight:700;font-family:'Courier New',monospace;letter-spacing:-1px;line-height:1}
+.kl{font-size:9.5px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+.k-total .kv{color:#58a6ff}.k-con .kv{color:#22c55e}.k-sin .kv{color:#ef4444}.k-inc .kv{color:#f59e0b}
+#dash-body{flex:1;display:flex;overflow:hidden;min-height:0}
+#tbl-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:10px 16px;min-width:0}
+.sec-hdr{font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px;flex-shrink:0}
+#tbl-scroll{flex:1;overflow-y:auto;min-height:0}
+#tbl-scroll::-webkit-scrollbar{width:4px}
+#tbl-scroll::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+#tbl{width:100%;border-collapse:collapse;font-size:11px}
+#tbl th{background:#1f2937;color:#8b949e;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;text-align:left;position:sticky;top:0;z-index:1;white-space:nowrap}
+#tbl td{padding:6px 8px;border-bottom:1px solid #1f2937;vertical-align:middle}
+#tbl tr:hover td{background:#1c2128}
+.tc{text-align:center}.tbold{font-weight:600}.det{color:#8b949e;font-size:10px;max-width:300px}
+.no-data{text-align:center;color:#6b7280;padding:30px;font-style:italic}
+.tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700;white-space:nowrap}
+#dash-r{width:252px;min-width:252px;border-left:1px solid #21262d;padding:10px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;overflow-y:auto}
+#dash-r::-webkit-scrollbar{width:4px}
+#dleg{width:100%;display:flex;flex-direction:column;gap:5px;margin-top:2px}
+.li2{display:flex;align-items:center;gap:7px;font-size:10px;padding:3px 0}
+.ld2{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.ll2{flex:1;color:#cbd5e1}.lv2{color:#6b7280;font-weight:700;min-width:24px;text-align:right}
+#btn-ppt{width:100%;padding:8px 10px;background:#0d1b31;color:#58a6ff;border:1px solid #1f4a8a;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;font-family:inherit;transition:.15s;margin-top:6px}
+#btn-ppt:hover{background:#1f4a8a;color:#fff}
+#btn-ppt:disabled{opacity:.5;cursor:default}
+#ppt-status{font-size:10px;text-align:center;min-height:14px;width:100%}
+#dash-foot{padding:5px 14px;font-size:10px;color:#6b7280;border-top:1px solid #21262d;background:#0d1117;flex-shrink:0;min-height:24px}
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="panel">
-    <div id="ph">
-      <h1>🌐 Simulador Topología v5 — Lambayeque</h1>
-      <p>3 Anillos + Ramales · Clic en enlace para cortar/restaurar</p>
-    </div>
-    <div id="stats">
-      <div class="slbl">Impacto en tiempo real</div>
-      <div class="sg">
-        <div class="sb ca"><div class="v" id="s-ct">0</div><div class="l">Caídos</div></div>
-        <div class="sb ac"><div class="v" id="s-at">247</div><div class="l">Activos</div></div>
-      </div>
-      <div class="sf">
-        <div class="r"><span class="lb">Distritales</span><span class="ca" id="s-dc">0</span><span class="sl">/</span><span class="ac" id="s-da">33</span></div>
-        <div class="r"><span class="lb">Intermedios</span><span class="ca" id="s-ic">0</span><span class="sl">/</span><span class="ac" id="s-ia">69</span></div>
-        <div class="r"><span class="lb">Terminales</span><span class="ca" id="s-tc">0</span><span class="sl">/</span><span class="ac" id="s-ta">145</span></div>
-      </div>
-    </div>
-    <div id="lista-wrap">
-      <div id="lista-hdr">Distritales afectados</div>
-      <div id="lista"><div style="color:#6b7280;font-size:11px;padding:8px 4px">Sin cortes — red totalmente operativa.</div></div>
-    </div>
-    <div id="ctrl">
-      <button class="btn br" onclick="resetAll()">✅ Restaurar todos los enlaces</button>
-      <button class="btn bd" onclick="mostrarCriticos()">⚠️ Resaltar enlaces críticos</button>
-      <button class="btn bc" onclick="ocultarCriticos()">🔲 Ocultar resaltado</button>
-    </div>
+
+<!-- NAV BAR -->
+<nav id="nav">
+  <button class="tb active" onclick="switchTab('sim')">🌐 Simulador</button>
+  <button class="tb" onclick="switchTab('dash')">📊 Dashboard</button>
+  <div id="di">
+    <span class="di-item" id="di-bd">⏳ Cargando BD...</span>
+    <span class="di-item" id="di-inf">⏳ Infinera...</span>
+    <span class="di-item" id="di-net">⏳ NetEco...</span>
   </div>
-  <div id="cw">
-    <div id="topbar">
-      <div id="mb">
-        <button class="mb active" onclick="setModo('corte')">✂️ Cortar enlace</button>
-        <button class="mb" onclick="setModo('pan')">🖐 Mover mapa</button>
+  <button id="btn-act" onclick="cargarTodo(true)">🔄 Actualizar</button>
+</nav>
+
+<!-- TAB 1: SIMULADOR -->
+<div id="tab-sim" class="tab active">
+  <div id="app">
+    <div id="panel">
+      <div id="ph">
+        <h1>🌐 Simulador Topología v6 — Lambayeque</h1>
+        <p>3 Anillos + Ramales · Datos automáticos desde Drive</p>
       </div>
-      <div id="badge">✂️ <span id="n-cortes">0</span> cortado(s)</div>
+      <div id="stats">
+        <div class="slbl">Impacto en tiempo real</div>
+        <div class="sg">
+          <div class="sb ca"><div class="v" id="s-ct">0</div><div class="l">Caídos</div></div>
+          <div class="sb ac"><div class="v" id="s-at">247</div><div class="l">Activos</div></div>
+        </div>
+        <div class="sf">
+          <div class="r"><span class="lb">Distritales</span><span class="ca" id="s-dc">0</span><span class="sl">/</span><span class="ac" id="s-da">33</span></div>
+          <div class="r"><span class="lb">Intermedios</span><span class="ca" id="s-ic">0</span><span class="sl">/</span><span class="ac" id="s-ia">69</span></div>
+          <div class="r"><span class="lb">Terminales</span><span class="ca" id="s-tc">0</span><span class="sl">/</span><span class="ac" id="s-ta">145</span></div>
+        </div>
+      </div>
+      <div id="lista-wrap">
+        <div id="lista-hdr">Distritales afectados</div>
+        <div id="lista"><div style="color:#6b7280;font-size:11px;padding:8px 4px">Sin cortes — red totalmente operativa.</div></div>
+      </div>
+      <div id="ctrl">
+        <button class="btn br" onclick="resetAll()">✅ Restaurar todos los enlaces</button>
+        <button class="btn bd" onclick="mostrarCriticos()">⚠️ Resaltar enlaces críticos</button>
+        <button class="btn bc" onclick="ocultarCriticos()">🔲 Ocultar resaltado</button>
+      </div>
     </div>
-    <div id="inf"></div>
-    <canvas id="c"></canvas>
-    <div id="ley">
-      <h4>Leyenda</h4>
-      <div class="li"><div class="ld" style="background:#3b82f6;box-shadow:0 0 8px #3b82f688"></div>Nodo CORE</div>
-      <div class="li"><div class="ld" style="background:#22c55e"></div>Distrital activo</div>
-      <div class="li"><div class="ld" style="background:#ef4444"></div>Nodo caído</div>
-      <div class="li"><div class="ll" style="background:#f59e0b"></div>Anillo costa</div>
-      <div class="li"><div class="ll" style="background:#38bdf8"></div>Anillo norte</div>
-      <div class="li"><div class="ll" style="background:#4ade80"></div>Anillo interior</div>
-      <div class="li"><div class="ll" style="background:#64748b"></div>Ramal</div>
-      <div class="li"><div class="ll" style="background:#f97316"></div>Enlace crítico</div>
-      <div class="li"><div class="lx" style="border-color:#ef4444"></div>Enlace cortado</div>
+    <div id="cw">
+      <div id="topbar">
+        <div id="mb">
+          <button class="mb active" onclick="setModo('corte')">✂️ Cortar enlace</button>
+          <button class="mb" onclick="setModo('pan')">🖐 Mover mapa</button>
+        </div>
+        <div id="badge">⚡ <span id="n-cortes">0 dist. auto-cortados</span></div>
+      </div>
+      <div id="inf"></div>
+      <canvas id="c"></canvas>
+      <div id="ley">
+        <h4>Leyenda</h4>
+        <div class="li"><div class="ld" style="background:#3b82f6;box-shadow:0 0 8px #3b82f688"></div>Nodo CORE</div>
+        <div class="li"><div class="ld" style="background:#22c55e"></div>Distrital activo</div>
+        <div class="li"><div class="ld" style="background:#ef4444"></div>Sin servicio</div>
+        <div class="li"><div class="ll" style="background:#f59e0b"></div>Anillo costa</div>
+        <div class="li"><div class="ll" style="background:#38bdf8"></div>Anillo norte</div>
+        <div class="li"><div class="ll" style="background:#4ade80"></div>Anillo interior</div>
+        <div class="li"><div class="ll" style="background:#64748b"></div>Ramal</div>
+        <div class="li"><div class="ll" style="background:#f97316"></div>Enlace crítico</div>
+        <div class="li"><div class="lx" style="border-color:#ef4444"></div>Corte manual</div>
+        <div class="li"><div class="lx" style="border-color:#fb923c"></div>Corte auto (Infinera)</div>
+      </div>
     </div>
   </div>
 </div>
-<div id="tip"></div>
-<script>
-var _0x4f2a=function(x){return x};var _0x9b1c=[];var _0x3e7d=null;
-var _0x8a2f=typeof window!=='undefined';var _0x1d5e=Date.now();
 
-// Proteccion
+<!-- TAB 2: DASHBOARD -->
+<div id="tab-dash" class="tab">
+  <div id="kpi-row">
+    <div class="kpi k-total"><div class="kv" id="kv-tot">247</div><div class="kl">Total nodos</div></div>
+    <div class="kpi k-con"><div class="kv" id="kv-con">—</div><div class="kl">Con servicio</div></div>
+    <div class="kpi k-sin"><div class="kv" id="kv-sin">—</div><div class="kl">Sin servicio</div></div>
+    <div class="kpi k-inc"><div class="kv" id="kv-inc">—</div><div class="kl">Incidencias</div></div>
+  </div>
+  <div id="dash-body">
+    <div id="tbl-outer">
+      <div class="sec-hdr">📋 Incidencias activas — <span id="fecha-rep">cargando...</span></div>
+      <div id="tbl-scroll">
+        <table id="tbl">
+          <thead>
+            <tr>
+              <th style="width:28px">#</th>
+              <th style="width:155px">Causa</th>
+              <th>Título</th>
+              <th style="width:52px;text-align:center">Nodos</th>
+              <th style="width:45px;text-align:center">Días</th>
+              <th style="min-width:140px">Detalle</th>
+              <th style="width:28px"></th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body">
+            <tr><td colspan="6" class="no-data">⏳ Cargando datos desde Drive...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div id="dash-r">
+      <div class="sec-hdr" style="align-self:flex-start">📊 Por causa</div>
+      <canvas id="donut" width="210" height="210"></canvas>
+      <div id="dleg"></div>
+      <button id="btn-ppt" onclick="generarPPT()">📥 Descargar PPT</button>
+      <div id="ppt-status"></div>
+    </div>
+  </div>
+  <!-- Panel gestión causa social -->
+  <div id="soc-panel">
+    <h4>⚙️ Gestión Causa Social</h4>
+    <div id="soc-lista"><div style="color:#6b7280;font-size:10px">Sin nodos sociales activos.</div></div>
+    <button id="btn-add-soc" onclick="mostrarFormSocial()">+ Agregar nodo social</button>
+    <div id="soc-form">
+      <input class="soc-inp" id="soc-codigo" placeholder="Código nodo: LA00___" maxlength="8">
+      <input class="soc-inp" id="soc-motivo" placeholder="Motivo (obligatorio)">
+      <div class="soc-form-btns">
+        <button class="mbtn mbtn-pri" style="flex:1" onclick="agregarSocial()">Guardar</button>
+        <button class="mbtn mbtn-sec" onclick="ocultarFormSocial()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+  <div id="dash-foot">Esperando datos...</div>
+</div>
+
+<!-- Override modal -->
+<div id="modal-ovr">
+  <div id="modal-box">
+    <h3>✏️ Editar causa raíz — <span id="modal-titulo"></span></h3>
+    <div id="modal-radios"></div>
+    <textarea id="modal-nota" placeholder="Nota del técnico (opcional)..."></textarea>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-sec" onclick="cerrarModal()">Cancelar</button>
+      <button class="mbtn mbtn-pri" onclick="guardarOverride()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="tip"></div>
+
+<script>
+var _0x4f2a=function(x){return x};
+var _0x9b1c=[];
+var _0x3e7d=null;
+var _0x8a2f=typeof window!=='undefined';
+var _0x1d5e=Date.now();
+var _0x7c3b=function(){};
+var _0x2e9f=[];
+
 document.addEventListener('contextmenu',function(e){e.preventDefault();});
 document.addEventListener('keydown',function(e){
   if(e.keyCode===123){e.preventDefault();return false;}
   if(e.ctrlKey&&e.shiftKey&&e.keyCode===73){e.preventDefault();return false;}
 });
+
+// ═══════════════════════════════════════════════════════════════════
+//  CONFIGURACIÓN
+// ═══════════════════════════════════════════════════════════════════
+const PROXY='https://script.google.com/macros/s/AKfycbxsHAS03haOgNv0ntyS5xklt48WqrEBcmQkrusjQ-wlwFhDNkALCMN1kkyRHdsU_ZQc/exec';
+
+// ═══════════════════════════════════════════════════════════════════
+//  DATOS TOPOLOGÍA (embebidos — no modificar)
+// ═══════════════════════════════════════════════════════════════════
 const D={"NT_POSITIONS": {"LAS_BRISAS": {"x": 490, "y": 380, "nombre": "LAS BRISAS", "tipo": "CORE"}, "ETEN_PUERTO": {"x": 490, "y": 640, "nombre": "ETEN PUERTO", "tipo": "CORE"}, "PUCALA": {"x": 900, "y": 460, "nombre": "PUCALA", "tipo": "CORE"}, "PIMENTEL": {"x": 375, "y": 432, "nombre": "PIMENTEL", "tipo": "ANILLO_COSTA"}, "STA_ROSA": {"x": 275, "y": 496, "nombre": "STA. ROSA", "tipo": "ANILLO_COSTA"}, "MONSEFU": {"x": 280, "y": 567, "nombre": "MONSEFÚ", "tipo": "ANILLO_COSTA", "dist": "LA00396"}, "ETEN": {"x": 365, "y": 616, "nombre": "ETEN", "tipo": "ANILLO_COSTA", "dist": "LA00296"}, "REQUE": {"x": 607, "y": 606, "nombre": "REQUE", "tipo": "ANILLO_COSTA", "dist": "LA00471"}, "LA_VICTORIA": {"x": 638, "y": 510, "nombre": "LA VICTORIA", "tipo": "ANILLO_COSTA", "dist": "LA00371"}, "OLMOS": {"x": 310, "y": -120, "nombre": "OLMOS", "tipo": "RAMAL", "dist": "LA00418"}, "MOTUPE": {"x": 310, "y": -55, "nombre": "MOTUPE", "tipo": "RAMAL", "dist": "LA00400"}, "JAYANCA": {"x": 310, "y": 10, "nombre": "JAYANCA", "tipo": "RAMAL", "dist": "LA00331"}, "PACORA": {"x": 310, "y": 70, "nombre": "PACORA", "tipo": "RAMAL", "dist": "LA00424"}, "ILLIMO": {"x": 310, "y": 130, "nombre": "ILLIMO", "tipo": "ANILLO_INTERIOR", "dist": "LA00323"}, "TUCUME": {"x": 310, "y": 190, "nombre": "TÚCUME", "tipo": "ANILLO_INTERIOR", "dist": "LA00517"}, "MOCHUMI": {"x": 310, "y": 250, "nombre": "MOCHUMI", "tipo": "ANILLO_NORTE", "dist": "LA00390"}, "LAMBAYEQUE": {"x": 310, "y": 320, "nombre": "LAMBAYEQUE", "tipo": "ANILLO_NORTE", "dist": "LA00353"}, "JLO": {"x": 310, "y": 380, "nombre": "JLO", "tipo": "ANILLO_NORTE"}, "SAN_JOSE": {"x": 155, "y": 380, "nombre": "SAN JOSÉ", "tipo": "RAMAL", "dist": "LA00482"}, "PICSI": {"x": 640, "y": 380, "nombre": "PICSI", "tipo": "ANILLO_NORTE", "dist": "LA00438"}, "POMALCA": {"x": 790, "y": 380, "nombre": "POMALCA", "tipo": "ANILLO_NORTE", "dist": "LA00445"}, "PATAPO": {"x": 900, "y": 380, "nombre": "PATAPO", "tipo": "RAMAL", "dist": "LA00434"}, "CHONGOYAPE": {"x": 1010, "y": 380, "nombre": "CHONGOYAPE", "tipo": "RAMAL", "dist": "LA00253"}, "LUYA": {"x": 790, "y": 315, "nombre": "LUYA (Tumán)", "tipo": "ANILLO_NORTE", "dist": "LA00378"}, "MESONES": {"x": 790, "y": 250, "nombre": "MESONES", "tipo": "ANILLO_NORTE", "dist": "LA00380"}, "FERRENAFE": {"x": 640, "y": 250, "nombre": "FERREÑAFE", "tipo": "ANILLO_NORTE", "dist": "LA00303"}, "P_NUEVO": {"x": 490, "y": 250, "nombre": "CCPP P.NUEVO", "tipo": "ANILLO_NORTE", "dist": "LA00730"}, "MORROPE": {"x": 140, "y": 225, "nombre": "MORROPE", "tipo": "ANILLO_INTERIOR", "dist": "LA00398"}, "SALAS": {"x": 450, "y": 10, "nombre": "SALAS", "tipo": "RAMAL", "dist": "LA00474"}, "INCAHUASI": {"x": 575, "y": 10, "nombre": "INCAHUASI", "tipo": "RAMAL", "dist": "LA00326"}, "CHOCHOPE": {"x": 450, "y": -55, "nombre": "CHOCHOPE", "tipo": "RAMAL", "dist": "LA00251"}, "PITIPO": {"x": 900, "y": 250, "nombre": "PITIPO", "tipo": "RAMAL", "dist": "LA00442"}, "CAYALTI_NT": {"x": 900, "y": 560, "nombre": "CAYALTI", "tipo": "RAMAL", "dist": "LA00243"}, "N_ARICA": {"x": 1000, "y": 595, "nombre": "N. ARICA", "tipo": "RAMAL", "dist": "LA00409"}, "OYOTUN": {"x": 1055, "y": 660, "nombre": "OYOTUN", "tipo": "RAMAL", "dist": "LA00420"}, "ZANA": {"x": 830, "y": 645, "nombre": "SAÑA", "tipo": "RAMAL", "dist": "LA00728"}, "MOCUPE": {"x": 775, "y": 715, "nombre": "MOCUPE", "tipo": "RAMAL", "dist": "LA00392"}, "JLO_URD": {"x": 220, "y": 440, "nombre": "URD JLO", "tipo": "RAMAL", "dist": "LA00247"}, "JLO_NOC": {"x": 415, "y": 440, "nombre": "NOC/MANT.", "tipo": "RAMAL", "dist": "LA00406"}}, "ENLACES": [["LAS_BRISAS", "PIMENTEL", "ANILLO_COSTA"], ["PIMENTEL", "STA_ROSA", "ANILLO_COSTA"], ["STA_ROSA", "MONSEFU", "ANILLO_COSTA"], ["MONSEFU", "ETEN", "ANILLO_COSTA"], ["ETEN", "ETEN_PUERTO", "ANILLO_COSTA"], ["ETEN_PUERTO", "REQUE", "ANILLO_COSTA"], ["REQUE", "LA_VICTORIA", "ANILLO_COSTA"], ["LA_VICTORIA", "LAS_BRISAS", "ANILLO_COSTA"], ["JLO", "LAS_BRISAS", "ANILLO_NORTE"], ["LAS_BRISAS", "PICSI", "ANILLO_NORTE"], ["PICSI", "POMALCA", "ANILLO_NORTE"], ["POMALCA", "LUYA", "ANILLO_NORTE"], ["LUYA", "MESONES", "ANILLO_NORTE"], ["MESONES", "FERRENAFE", "ANILLO_NORTE"], ["FERRENAFE", "P_NUEVO", "ANILLO_NORTE"], ["P_NUEVO", "MOCHUMI", "ANILLO_NORTE"], ["MOCHUMI", "LAMBAYEQUE", "ANILLO_NORTE"], ["LAMBAYEQUE", "JLO", "ANILLO_NORTE"], ["LAMBAYEQUE", "MORROPE", "ANILLO_INTERIOR"], ["MORROPE", "ILLIMO", "ANILLO_INTERIOR"], ["ILLIMO", "TUCUME", "ANILLO_INTERIOR"], ["TUCUME", "MOCHUMI", "ANILLO_INTERIOR"], ["ILLIMO", "PACORA", "RAMAL"], ["PACORA", "JAYANCA", "RAMAL"], ["JAYANCA", "MOTUPE", "RAMAL"], ["MOTUPE", "OLMOS", "RAMAL"], ["JAYANCA", "SALAS", "RAMAL"], ["SALAS", "INCAHUASI", "RAMAL"], ["MOTUPE", "CHOCHOPE", "RAMAL"], ["MESONES", "PITIPO", "RAMAL"], ["POMALCA", "PATAPO", "RAMAL"], ["PATAPO", "CHONGOYAPE", "RAMAL"], ["PATAPO", "PUCALA", "RAMAL"], ["PUCALA", "CAYALTI_NT", "RAMAL"], ["CAYALTI_NT", "N_ARICA", "RAMAL"], ["N_ARICA", "OYOTUN", "RAMAL"], ["CAYALTI_NT", "ZANA", "RAMAL"], ["ZANA", "MOCUPE", "RAMAL"], ["JLO", "SAN_JOSE", "RAMAL"], ["JLO", "JLO_URD", "RAMAL"], ["JLO", "JLO_NOC", "RAMAL"]], "NT_DIST": {"MONSEFU": "LA00396", "ETEN": "LA00296", "REQUE": "LA00471", "LA_VICTORIA": "LA00371", "OLMOS": "LA00418", "MOTUPE": "LA00400", "JAYANCA": "LA00331", "PACORA": "LA00424", "ILLIMO": "LA00323", "TUCUME": "LA00517", "MOCHUMI": "LA00390", "LAMBAYEQUE": "LA00353", "SAN_JOSE": "LA00482", "PICSI": "LA00438", "POMALCA": "LA00445", "PATAPO": "LA00434", "CHONGOYAPE": "LA00253", "LUYA": "LA00378", "MESONES": "LA00380", "FERRENAFE": "LA00303", "P_NUEVO": "LA00730", "MORROPE": "LA00398", "SALAS": "LA00474", "INCAHUASI": "LA00326", "CHOCHOPE": "LA00251", "PITIPO": "LA00442", "CAYALTI_NT": "LA00243", "N_ARICA": "LA00409", "OYOTUN": "LA00420", "ZANA": "LA00728", "MOCUPE": "LA00392", "JLO_URD": "LA00247", "JLO_NOC": "LA00406"}, "access_nodes": {"LA00243": {"nombre": "CAYALTI", "tipo": "DISTRITAL", "rol": "D1", "red": "CAYALTI", "padres": ["LA00445"]}, "LA00257": {"nombre": "COJAL", "tipo": "INTERMEDIO", "rol": "I1", "red": "CAYALTI", "padres": ["LA00243"]}, "LA00307": {"nombre": "GUAYAQUIL", "tipo": "INTERMEDIO", "rol": "I2", "red": "CAYALTI", "padres": ["LA00257"]}, "LA00342": {"nombre": "LA_AVIACION", "tipo": "TERMINAL", "rol": "A1", "red": "CAYALTI", "padres": ["LA00243"]}, "LA00346": {"nombre": "LA_CURVA", "tipo": "TERMINAL", "rol": "A2", "red": "CAYALTI", "padres": ["LA00243"]}, "LA00373": {"nombre": "LA_VINA_ZONA_7", "tipo": "TERMINAL", "rol": "A3", "red": "CAYALTI", "padres": ["LA00307"]}, "LA00251": {"nombre": "CHOCHOPE", "tipo": "DISTRITAL", "rol": "D2", "red": "CHOCHOPE", "padres": ["LA00400"]}, "LA00514": {"nombre": "TONGORRAPE(LA_CAPILLA)", "tipo": "INTERMEDIO", "rol": "I1", "red": "CHOCHOPE", "padres": ["LA00251"]}, "LA00258": {"nombre": "COLAYA", "tipo": "INTERMEDIO", "rol": "I2", "red": "CHOCHOPE", "padres": ["LA00514"]}, "LA00467": {"nombre": "REPETIDOR_COLAYA", "tipo": "INTERMEDIO", "rol": "I3", "red": "CHOCHOPE", "padres": ["LA00258"]}, "LA00464": {"nombre": "REPETIDOR_2", "tipo": "INTERMEDIO", "rol": "I4", "red": "CHOCHOPE", "padres": ["LA00467"]}, "LA00465": {"nombre": "REPETIDOR_4", "tipo": "INTERMEDIO", "rol": "I5", "red": "CHOCHOPE", "padres": ["LA00464"]}, "LA00262": {"nombre": "CONGONA", "tipo": "INTERMEDIO", "rol": "I6", "red": "CHOCHOPE", "padres": ["LA00464"]}, "LA00469": {"nombre": "REPETIDOR_PANDACHI", "tipo": "INTERMEDIO", "rol": "I7", "red": "CHOCHOPE", "padres": ["LA00465"]}, "LA00232": {"nombre": "CANARIS", "tipo": "TERMINAL", "rol": "A1", "red": "CHOCHOPE", "padres": ["LA00465"]}, "LA00264": {"nombre": "CORRAL_DE_PIEDRA", "tipo": "TERMINAL", "rol": "A2", "red": "CHOCHOPE", "padres": ["LA00467"]}, "LA00394": {"nombre": "MOLINO_DEL_CARMEN", "tipo": "TERMINAL", "rol": "A3", "red": "CHOCHOPE", "padres": ["LA00251"]}, "LA00427": {"nombre": "PAMPA_BERNILLA", "tipo": "TERMINAL", "rol": "A4", "red": "CHOCHOPE", "padres": ["LA00467"]}, "LA00430": {"nombre": "PANDACHI", "tipo": "TERMINAL", "rol": "A5", "red": "CHOCHOPE", "padres": ["LA00469"]}, "LA00468": {"nombre": "REPETIDOR_CONGONA", "tipo": "TERMINAL", "rol": "A6", "red": "CHOCHOPE", "padres": ["LA00262"]}, "LA00515": {"nombre": "TOTORAS", "tipo": "TERMINAL", "rol": "A7", "red": "CHOCHOPE", "padres": ["LA00464"]}, "LA00253": {"nombre": "CHONGOYAPE", "tipo": "DISTRITAL", "rol": "D3", "red": "CHONGOYAPE", "padres": ["LA00434"]}, "LA00311": {"nombre": "HUACA_BLANCA", "tipo": "INTERMEDIO", "rol": "I1", "red": "CHONGOYAPE", "padres": ["LA00253"]}, "LA00513": {"nombre": "TIERRAS_BLANCAS", "tipo": "INTERMEDIO", "rol": "I2", "red": "CHONGOYAPE", "padres": ["LA00311"]}, "LA00432": {"nombre": "PAREDONES", "tipo": "TERMINAL", "rol": "A1", "red": "CHONGOYAPE", "padres": ["LA00513"]}, "LA00440": {"nombre": "PIEDRA_PARADA", "tipo": "TERMINAL", "rol": "A2", "red": "CHONGOYAPE", "padres": ["LA00253"]}, "LA00296": {"nombre": "ETEN", "tipo": "DISTRITAL", "rol": "D4", "red": "ETEN", "padres": ["LA00471", "LA00396"]}, "LA00527": {"nombre": "VILLA_EL_MILAGRO", "tipo": "TERMINAL", "rol": "A1", "red": "ETEN", "padres": ["LA00296"]}, "LA00303": {"nombre": "FERRENAFE", "tipo": "DISTRITAL", "rol": "D5", "red": "FERREÑAFE", "padres": ["LA00730", "LA00380"]}, "LA00300": {"nombre": "FALA", "tipo": "TERMINAL", "rol": "A1", "red": "FERREÑAFE", "padres": ["LA00303"]}, "LA00323": {"nombre": "ILLIMO", "tipo": "DISTRITAL", "rol": "D6", "red": "ILLIMO", "padres": ["LA00398", "LA00517"]}, "LA00271": {"nombre": "CULPON_ALTO", "tipo": "TERMINAL", "rol": "A1", "red": "ILLIMO", "padres": ["LA00323"]}, "LA00376": {"nombre": "LOS_BANCES", "tipo": "TERMINAL", "rol": "A2", "red": "ILLIMO", "padres": ["LA00323"]}, "LA00479": {"nombre": "SAN_ISIDRO(HUACA TRAPICHE)", "tipo": "TERMINAL", "rol": "A3", "red": "ILLIMO", "padres": ["LA00323"]}, "LA00484": {"nombre": "SAN_JUAN", "tipo": "TERMINAL", "rol": "A4", "red": "ILLIMO", "padres": ["LA00323"]}, "LA00495": {"nombre": "SEQUIONES", "tipo": "TERMINAL", "rol": "A5", "red": "ILLIMO", "padres": ["LA00323"]}, "LA00326": {"nombre": "INCAHUASI", "tipo": "DISTRITAL", "rol": "D7", "red": "INCAHUASI", "padres": ["LA00474"]}, "LA00504": {"nombre": "SUBESTACION_MT_BT_(CERCA_A_ALTO_ROMERO)", "tipo": "INTERMEDIO", "rol": "I1", "red": "INCAHUASI", "padres": ["LA00326"]}, "LA00522": {"nombre": "UYSHAHUASI", "tipo": "INTERMEDIO", "rol": "I10", "red": "INCAHUASI", "padres": ["LA00463"]}, "LA00503": {"nombre": "SUBESTACION_MT_BT_(CERCA_A_ALTO_CONDORSAMANAN)", "tipo": "INTERMEDIO", "rol": "I2", "red": "INCAHUASI", "padres": ["LA00504"]}, "LA00330": {"nombre": "JANQUE", "tipo": "INTERMEDIO", "rol": "I3", "red": "INCAHUASI", "padres": ["LA00503"]}, "LA00320": {"nombre": "HUAYRUL", "tipo": "INTERMEDIO", "rol": "I4", "red": "INCAHUASI", "padres": ["LA00330"]}, "LA00463": {"nombre": "REPETIDOR_6", "tipo": "INTERMEDIO", "rol": "I5", "red": "INCAHUASI", "padres": ["LA00320"]}, "LA00267": {"nombre": "CRUZ_LOMA", "tipo": "INTERMEDIO", "rol": "I6", "red": "INCAHUASI", "padres": ["LA00504"]}, "LA00335": {"nombre": "KALLIMA", "tipo": "INTERMEDIO", "rol": "I7", "red": "INCAHUASI", "padres": ["LA00504"]}, "LA00319": {"nombre": "HUASICAJ", "tipo": "INTERMEDIO", "rol": "I8", "red": "INCAHUASI", "padres": ["LA00504"]}, "LA00691": {"nombre": "LA_TRANCA", "tipo": "INTERMEDIO", "rol": "I9", "red": "INCAHUASI", "padres": ["LA00335"]}, "LA00216": {"nombre": "AMUSUY", "tipo": "TERMINAL", "rol": "A1", "red": "INCAHUASI", "padres": ["LA00267"]}, "LA00225": {"nombre": "ATUMPAMPA", "tipo": "TERMINAL", "rol": "A2", "red": "INCAHUASI", "padres": ["LA00504"]}, "LA00226": {"nombre": "AYAMACHAY", "tipo": "TERMINAL", "rol": "A3", "red": "INCAHUASI", "padres": ["LA00504"]}, "LA00238": {"nombre": "CANCHACHALA", "tipo": "TERMINAL", "rol": "A4", "red": "INCAHUASI", "padres": ["LA00463"]}, "LA00318": {"nombre": "HUAR_HUAR(WAR_WAR)", "tipo": "TERMINAL", "rol": "A5", "red": "INCAHUASI", "padres": ["LA00319"]}, "LA00403": {"nombre": "LA_MOYAN", "tipo": "TERMINAL", "rol": "A6", "red": "INCAHUASI", "padres": ["LA00267"]}, "LA00355": {"nombre": "LANCHIPAMPA", "tipo": "TERMINAL", "rol": "A7", "red": "INCAHUASI", "padres": ["LA00522"]}, "LA00383": {"nombre": "MARAYHUACA", "tipo": "TERMINAL", "rol": "A8", "red": "INCAHUASI", "padres": ["LA00691"]}, "LA00523": {"nombre": "UYURPAMPA", "tipo": "TERMINAL", "rol": "A9", "red": "INCAHUASI", "padres": ["LA00504"]}, "LA00331": {"nombre": "JAYANCA", "tipo": "DISTRITAL", "rol": "D8", "red": "JAYANCA", "padres": ["LA00424"]}, "LA00371": {"nombre": "LA_VICTORIA", "tipo": "DISTRITAL", "rol": "D9", "red": "LA VICTORIA", "padres": ["LA00471", "LA00396"]}, "LA00348": {"nombre": "LA_GARITA", "tipo": "TERMINAL", "rol": "A1", "red": "LA VICTORIA", "padres": ["LA00371"]}, "LA00449": {"nombre": "PRADERA", "tipo": "TERMINAL", "rol": "A2", "red": "LA VICTORIA", "padres": ["LA00371"]}, "LA00353": {"nombre": "LAMBAYEQUE", "tipo": "DISTRITAL", "rol": "D10", "red": "LAMBAYEQUE", "padres": ["LA00390", "LA00398"]}, "LA00404": {"nombre": "MUYFINCA_PUNTO_NUEVE_RAMADA_(EL_ADOBE)", "tipo": "INTERMEDIO", "rol": "I1", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00229": {"nombre": "BODEGONES", "tipo": "TERMINAL", "rol": "A1", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00531": {"nombre": "YENCALA_BOGGIANO", "tipo": "TERMINAL", "rol": "A10", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00530": {"nombre": "YENCALA_GARBANZAL", "tipo": "TERMINAL", "rol": "A11", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00299": {"nombre": "FAICALITO", "tipo": "TERMINAL", "rol": "A2", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00384": {"nombre": "MARIATEGUI", "tipo": "TERMINAL", "rol": "A3", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00652": {"nombre": "PAREDONES_ALTO", "tipo": "TERMINAL", "rol": "A4", "red": "LAMBAYEQUE", "padres": ["LA00404"]}, "LA00461": {"nombre": "PUNTO_NUEVE", "tipo": "TERMINAL", "rol": "A5", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00485": {"nombre": "SAN_MIGUEL", "tipo": "TERMINAL", "rol": "A6", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00491": {"nombre": "SANTO_TOMAS", "tipo": "TERMINAL", "rol": "A7", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00500": {"nombre": "SIALUPE_HUAMANTANGA_SECTOR_1(HUAMANTANGA)", "tipo": "TERMINAL", "rol": "A8", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00529": {"nombre": "VIRGEN_PURISIMA_CONCEPCION", "tipo": "TERMINAL", "rol": "A9", "red": "LAMBAYEQUE", "padres": ["LA00353"]}, "LA00380": {"nombre": "MANUEL_ANTONIO_MESONES_MURO", "tipo": "DISTRITAL", "rol": "D11", "red": "MANUEL MESONES MURO", "padres": ["LA00303", "LA00378"]}, "LA00378": {"nombre": "LUYA", "tipo": "DISTRITAL", "rol": "D33", "red": "LUYA", "padres": ["LA00445", "LA00380"]}, "LA00290": {"nombre": "EL_TRIUNFO", "tipo": "TERMINAL", "rol": "A1", "red": "MANUEL MESONES MURO", "padres": ["LA00378"]}, "LA00390": {"nombre": "MOCHUMI", "tipo": "DISTRITAL", "rol": "D12", "red": "MOCHUMI", "padres": ["LA00517", "LA00730", "LA00353"]}, "LA00412": {"nombre": "NUEVO_SAN_ISIDRO", "tipo": "INTERMEDIO", "rol": "I1", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00235": {"nombre": "CACHINCHE", "tipo": "TERMINAL", "rol": "A1", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00512": {"nombre": "TEPO", "tipo": "TERMINAL", "rol": "A10", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00280": {"nombre": "EL_CEREZO", "tipo": "TERMINAL", "rol": "A2", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00313": {"nombre": "HUACA_DE_BARRO", "tipo": "TERMINAL", "rol": "A3", "red": "MOCHUMI", "padres": ["LA00412"]}, "LA00310": {"nombre": "HUACA_DE_TORO", "tipo": "TERMINAL", "rol": "A4", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00338": {"nombre": "LA_PIEDRA", "tipo": "TERMINAL", "rol": "A5", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00340": {"nombre": "LA_YOVERA_LAS_LOMAS", "tipo": "TERMINAL", "rol": "A6", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00382": {"nombre": "MARAVILLAS", "tipo": "TERMINAL", "rol": "A7", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00456": {"nombre": "PUEBLO_NUEVO", "tipo": "TERMINAL", "rol": "A8", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00498": {"nombre": "SIALUPE_BACA_LA_CAPILLA_SANTA_ROSA", "tipo": "TERMINAL", "rol": "A9", "red": "MOCHUMI", "padres": ["LA00390"]}, "LA00392": {"nombre": "MOCUPE", "tipo": "DISTRITAL", "rol": "D13", "red": "MOCUPE", "padres": ["LA00728"]}, "LA00521": {"nombre": "TUPAC_AMARU_RAFAN", "tipo": "INTERMEDIO", "rol": "I1", "red": "MOCUPE", "padres": ["LA00392"]}, "LA00351": {"nombre": "LAGUNAS(CANASLOCHE)", "tipo": "TERMINAL", "rol": "A1", "red": "MOCUPE", "padres": ["LA00392"]}, "LA00695": {"nombre": "MONTECRUZ", "tipo": "TERMINAL", "rol": "A2", "red": "MOCUPE", "padres": ["LA00521"]}, "LA00413": {"nombre": "NUEVO_MOCUPE", "tipo": "TERMINAL", "rol": "A3", "red": "MOCUPE", "padres": ["LA00392"]}, "LA00455": {"nombre": "PUEBLO_LIBRE", "tipo": "TERMINAL", "rol": "A4", "red": "MOCUPE", "padres": ["LA00392"]}, "LA00396": {"nombre": "MONSEFU", "tipo": "DISTRITAL", "rol": "D14", "red": "MONSEFU", "padres": ["LA00371", "LA00296"]}, "LA00246": {"nombre": "CHACUPE_BAJO", "tipo": "TERMINAL", "rol": "A1", "red": "MONSEFU", "padres": ["LA00396"]}, "LA00312": {"nombre": "HUACA_BLANCA_ZONA_5", "tipo": "TERMINAL", "rol": "A2", "red": "MONSEFU", "padres": ["LA00396"]}, "LA00524": {"nombre": "VALLE_HERMOSO", "tipo": "TERMINAL", "rol": "A3", "red": "MONSEFU", "padres": ["LA00396"]}, "LA00398": {"nombre": "MORROPE", "tipo": "DISTRITAL", "rol": "D15", "red": "MORROPE", "padres": ["LA00323", "LA00353"]}, "LA00221": {"nombre": "ANGOLO_1", "tipo": "INTERMEDIO", "rol": "I1", "red": "MORROPE", "padres": ["LA00398"]}, "LA00220": {"nombre": "ANEXO_SANTA_ROSA", "tipo": "TERMINAL", "rol": "A1", "red": "MORROPE", "padres": ["LA00398"]}, "LA00436": {"nombre": "PEDREGAL", "tipo": "TERMINAL", "rol": "A10", "red": "MORROPE", "padres": ["LA00398"]}, "LA00223": {"nombre": "ANNAPE", "tipo": "TERMINAL", "rol": "A2", "red": "MORROPE", "padres": ["LA00398"]}, "LA00269": {"nombre": "CUCUFANA", "tipo": "TERMINAL", "rol": "A3", "red": "MORROPE", "padres": ["LA00221"]}, "LA00276": {"nombre": "DOS_PALOS", "tipo": "TERMINAL", "rol": "A4", "red": "MORROPE", "padres": ["LA00398"]}, "LA00301": {"nombre": "FANUPE_BARRIO_NUEVO", "tipo": "TERMINAL", "rol": "A5", "red": "MORROPE", "padres": ["LA00398"]}, "LA00337": {"nombre": "LA_COLORADA", "tipo": "TERMINAL", "rol": "A6", "red": "MORROPE", "padres": ["LA00398"]}, "LA00341": {"nombre": "LA_ZORRA", "tipo": "TERMINAL", "rol": "A7", "red": "MORROPE", "padres": ["LA00398"]}, "LA00365": {"nombre": "LAS_DELICIAS", "tipo": "TERMINAL", "rol": "A8", "red": "MORROPE", "padres": ["LA00398"]}, "LA00387": {"nombre": "MEDIANIA_25_FEBRERO", "tipo": "TERMINAL", "rol": "A9", "red": "MORROPE", "padres": ["LA00398"]}, "LA00400": {"nombre": "MOTUPE", "tipo": "DISTRITAL", "rol": "D16", "red": "MOTUPE", "padres": ["LA00331"]}, "LA00375": {"nombre": "LETICIA", "tipo": "INTERMEDIO", "rol": "I1", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00217": {"nombre": "ANCHOVIRA", "tipo": "INTERMEDIO", "rol": "I2", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00277": {"nombre": "EL_PAPAYO", "tipo": "INTERMEDIO", "rol": "I3", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00336": {"nombre": "KERGUER", "tipo": "INTERMEDIO", "rol": "I4", "red": "MOTUPE", "padres": ["LA00375"]}, "LA00352": {"nombre": "LAGUNA_ZARCO_2", "tipo": "INTERMEDIO", "rol": "I5", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00476": {"nombre": "SALITRAL", "tipo": "INTERMEDIO", "rol": "I6", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00245": {"nombre": "CERRO_LA_VIEJA", "tipo": "TERMINAL", "rol": "A1", "red": "MOTUPE", "padres": ["LA00277"]}, "LA00478": {"nombre": "SAN_CARRANCO", "tipo": "TERMINAL", "rol": "A10", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00293": {"nombre": "ESCUZA_BARAJA_2", "tipo": "TERMINAL", "rol": "A2", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00364": {"nombre": "LA_RAMADA", "tipo": "TERMINAL", "rol": "A3", "red": "MOTUPE", "padres": ["LA00476"]}, "LA00385": {"nombre": "MARRIPON", "tipo": "TERMINAL", "rol": "A4", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00395": {"nombre": "MONDRAGON", "tipo": "TERMINAL", "rol": "A5", "red": "MOTUPE", "padres": ["LA00352"]}, "LA00426": {"nombre": "PALO_BLANCO", "tipo": "TERMINAL", "rol": "A6", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00437": {"nombre": "PENACHI", "tipo": "TERMINAL", "rol": "A7", "red": "MOTUPE", "padres": ["LA00336"]}, "LA00448": {"nombre": "PRADA", "tipo": "TERMINAL", "rol": "A8", "red": "MOTUPE", "padres": ["LA00400"]}, "LA00731": {"nombre": "PUERTO_RICO", "tipo": "TERMINAL", "rol": "A9", "red": "MOTUPE", "padres": ["LA00217"]}, "LA00409": {"nombre": "NUEVA_ARICA", "tipo": "DISTRITAL", "rol": "D17", "red": "NUEVA ARICA", "padres": ["LA00243"]}, "LA00506": {"nombre": "SUBESTACION_MT_BT_(CERCA_A_LAS_DELICIAS)", "tipo": "INTERMEDIO", "rol": "I1", "red": "NUEVA ARICA", "padres": ["LA00367"]}, "LA00379": {"nombre": "MACUACO", "tipo": "INTERMEDIO", "rol": "I2", "red": "NUEVA ARICA", "padres": ["LA00506"]}, "LA00367": {"nombre": "LAS_DELICIAS_ZONA_7", "tipo": "INTERMEDIO", "rol": "I3", "red": "NUEVA ARICA", "padres": ["LA00409"]}, "LA00250": {"nombre": "CHILCAL_ALTO", "tipo": "INTERMEDIO", "rol": "I4", "red": "NUEVA ARICA", "padres": ["LA00379"]}, "LA00255": {"nombre": "CHUMBENIQUE", "tipo": "TERMINAL", "rol": "A1", "red": "NUEVA ARICA", "padres": ["LA00409"]}, "LA00272": {"nombre": "CULPON", "tipo": "TERMINAL", "rol": "A2", "red": "NUEVA ARICA", "padres": ["LA00409"]}, "LA00295": {"nombre": "ESPINAL", "tipo": "TERMINAL", "rol": "A3", "red": "NUEVA ARICA", "padres": ["LA00379"]}, "LA00344": {"nombre": "LA_COMPUERTA", "tipo": "TERMINAL", "rol": "A4", "red": "NUEVA ARICA", "padres": ["LA00409"]}, "LA00431": {"nombre": "PLBY_PAN_DE_AZUCAR", "tipo": "TERMINAL", "rol": "A5", "red": "NUEVA ARICA", "padres": ["LA00250"]}, "LA00418": {"nombre": "OLMOS", "tipo": "DISTRITAL", "rol": "D18", "red": "OLMOS", "padres": ["LA00400"]}, "LA00325": {"nombre": "IMPERIAL", "tipo": "INTERMEDIO", "rol": "I1", "red": "OLMOS", "padres": ["LA00418"]}, "LA00222": {"nombre": "ANGURUCAL", "tipo": "INTERMEDIO", "rol": "I10", "red": "OLMOS", "padres": ["LA00306"]}, "LA00265": {"nombre": "CRUCE_JAEN", "tipo": "INTERMEDIO", "rol": "I11", "red": "OLMOS", "padres": ["LA00418"]}, "LA00279": {"nombre": "EL_CARDO", "tipo": "INTERMEDIO", "rol": "I12", "red": "OLMOS", "padres": ["LA00494"]}, "LA00405": {"nombre": "NICHIPO", "tipo": "INTERMEDIO", "rol": "I13", "red": "OLMOS", "padres": ["LA00306"]}, "LA00444": {"nombre": "PLAYA_CASCAJAL", "tipo": "INTERMEDIO", "rol": "I14", "red": "OLMOS", "padres": ["LA00306"]}, "LA00502": {"nombre": "SINCAPE", "tipo": "INTERMEDIO", "rol": "I15", "red": "OLMOS", "padres": ["LA00306"]}, "LA00496": {"nombre": "SEQUION", "tipo": "INTERMEDIO", "rol": "I2", "red": "OLMOS", "padres": ["LA00325"]}, "LA00306": {"nombre": "GARBANZAL", "tipo": "INTERMEDIO", "rol": "I3", "red": "OLMOS", "padres": ["LA00418"]}, "LA00481": {"nombre": "SAN_CRISTOBAL", "tipo": "INTERMEDIO", "rol": "I4", "red": "OLMOS", "padres": ["LA00496"]}, "LA00329": {"nombre": "INSCULAS", "tipo": "INTERMEDIO", "rol": "I5", "red": "OLMOS", "padres": ["LA00496"]}, "LA00494": {"nombre": "SEQUION_02", "tipo": "INTERMEDIO", "rol": "I6", "red": "OLMOS", "padres": ["LA00496"]}, "LA00219": {"nombre": "ANCOL_GRANDE", "tipo": "INTERMEDIO", "rol": "I7", "red": "OLMOS", "padres": ["LA00481"]}, "LA00447": {"nombre": "PORVENIR", "tipo": "INTERMEDIO", "rol": "I8", "red": "OLMOS", "padres": ["LA00329"]}, "LA00343": {"nombre": "LA_CAPILLA_CENTRAL", "tipo": "INTERMEDIO", "rol": "I9", "red": "OLMOS", "padres": ["LA00447"]}, "LA00218": {"nombre": "ANCOL_CAUTIVO", "tipo": "TERMINAL", "rol": "A1", "red": "OLMOS", "padres": ["LA00481"]}, "LA00304": {"nombre": "FICUAR", "tipo": "TERMINAL", "rol": "A10", "red": "OLMOS", "padres": ["LA00219"]}, "LA00347": {"nombre": "LA_ESTANCIA", "tipo": "TERMINAL", "rol": "A11", "red": "OLMOS", "padres": ["LA00496"]}, "LA00361": {"nombre": "LA_PILCA", "tipo": "TERMINAL", "rol": "A12", "red": "OLMOS", "padres": ["LA00265"]}, "LA00350": {"nombre": "LAGUNA_LARGA", "tipo": "TERMINAL", "rol": "A13", "red": "OLMOS", "padres": ["LA00496"]}, "LA00368": {"nombre": "LAS_PAMPAS", "tipo": "TERMINAL", "rol": "A14", "red": "OLMOS", "padres": ["LA00444"]}, "LA00388": {"nombre": "MOCAPE", "tipo": "TERMINAL", "rol": "A15", "red": "OLMOS", "padres": ["LA00494"]}, "LA00415": {"nombre": "NAUPE", "tipo": "TERMINAL", "rol": "A16", "red": "OLMOS", "padres": ["LA00343"]}, "LA00433": {"nombre": "PASAJE_NORTE", "tipo": "TERMINAL", "rol": "A17", "red": "OLMOS", "padres": ["LA00481"]}, "LA00462": {"nombre": "QUERPON", "tipo": "TERMINAL", "rol": "A18", "red": "OLMOS", "padres": ["LA00343"]}, "LA00692": {"nombre": "SANTA_ISABEL", "tipo": "TERMINAL", "rol": "A19", "red": "OLMOS", "padres": ["LA00279"]}, "LA00228": {"nombre": "BOCA_CHICA", "tipo": "TERMINAL", "rol": "A2", "red": "OLMOS", "padres": ["LA00329"]}, "LA00489": {"nombre": "SANTA_ROSA", "tipo": "TERMINAL", "rol": "A20", "red": "OLMOS", "padres": ["LA00329"]}, "LA00693": {"nombre": "SENQUELO", "tipo": "TERMINAL", "rol": "A21", "red": "OLMOS", "padres": ["LA00329"]}, "LA00694": {"nombre": "TRES_BATANES", "tipo": "TERMINAL", "rol": "A22", "red": "OLMOS", "padres": ["LA00222"]}, "LA00263": {"nombre": "CORRAL_DE_ARENA", "tipo": "TERMINAL", "rol": "A3", "red": "OLMOS", "padres": ["LA00219"]}, "LA00266": {"nombre": "CRUZ_BLANCA", "tipo": "TERMINAL", "rol": "A4", "red": "OLMOS", "padres": ["LA00405"]}, "LA00285": {"nombre": "EL_MILAGRO", "tipo": "TERMINAL", "rol": "A5", "red": "OLMOS", "padres": ["LA00219"]}, "LA00286": {"nombre": "EL_MUERTO", "tipo": "TERMINAL", "rol": "A6", "red": "OLMOS", "padres": ["LA00418"]}, "LA00454": {"nombre": "EL_PUEBLITO", "tipo": "TERMINAL", "rol": "A7", "red": "OLMOS", "padres": ["LA00502"]}, "LA00288": {"nombre": "EL_PUENTE", "tipo": "TERMINAL", "rol": "A8", "red": "OLMOS", "padres": ["LA00481"]}, "LA00292": {"nombre": "ESCUTE", "tipo": "TERMINAL", "rol": "A9", "red": "OLMOS", "padres": ["LA00494"]}, "LA00420": {"nombre": "OYOTUN", "tipo": "DISTRITAL", "rol": "D19", "red": "OYOTUN", "padres": ["LA00409"]}, "LA00424": {"nombre": "PACORA", "tipo": "DISTRITAL", "rol": "D20", "red": "PACORA", "padres": ["LA00323"]}, "LA00315": {"nombre": "HUACA_PARTIDA", "tipo": "INTERMEDIO", "rol": "I1", "red": "PACORA", "padres": ["LA00424"]}, "CA00436": {"nombre": "REPETIDOR_7", "tipo": "INTERMEDIO", "rol": "I2", "red": "PACORA", "padres": ["LA00315"]}, "LA00402": {"nombre": "MOTUPILLO", "tipo": "INTERMEDIO", "rol": "I3", "red": "PACORA", "padres": ["LA00315"]}, "LA00416": {"nombre": "OJO_DE_TORO_PARTE_ALTA", "tipo": "INTERMEDIO", "rol": "I4", "red": "PACORA", "padres": ["LA00424"]}, "LA00291": {"nombre": "EL_VERDE", "tipo": "INTERMEDIO", "rol": "I5", "red": "PACORA", "padres": ["LA00416"]}, "LA00339": {"nombre": "LA_TRAPOSA", "tipo": "INTERMEDIO", "rol": "I6", "red": "PACORA", "padres": ["LA00402"]}, "LA00374": {"nombre": "LA_VINA", "tipo": "INTERMEDIO", "rol": "I7", "red": "PACORA", "padres": ["LA00424"]}, "LA00242": {"nombre": "CASA_EMBARRADA", "tipo": "TERMINAL", "rol": "A1", "red": "PACORA", "padres": ["LA00424"]}, "LA00453": {"nombre": "PUCHACA_BAJO", "tipo": "TERMINAL", "rol": "A10", "red": "PACORA", "padres": ["CA00436"]}, "LA00689": {"nombre": "REPETIDOR_LAQUIPAMPA", "tipo": "TERMINAL", "rol": "A11", "red": "PACORA", "padres": ["LA00363"]}, "LA00509": {"nombre": "TAMBO_REAL", "tipo": "TERMINAL", "rol": "A12", "red": "PACORA", "padres": ["LA00424"]}, "LA00516": {"nombre": "TRES_PUENTES_A", "tipo": "TERMINAL", "rol": "A13", "red": "PACORA", "padres": ["LA00291"]}, "LA00528": {"nombre": "VILLA_SAN_JUAN", "tipo": "TERMINAL", "rol": "A14", "red": "PACORA", "padres": ["LA00424"]}, "LA00284": {"nombre": "EL_MARCO", "tipo": "TERMINAL", "rol": "A2", "red": "PACORA", "padres": ["LA00374"]}, "LA00370": {"nombre": "LA_TOMASITA", "tipo": "TERMINAL", "rol": "A3", "red": "PACORA", "padres": ["LA00424"]}, "LA00363": {"nombre": "LAQUIPAMPA", "tipo": "TERMINAL", "rol": "A4", "red": "PACORA", "padres": ["CA00436"]}, "LA00654": {"nombre": "LAS_JUNTAS_ALTAS", "tipo": "TERMINAL", "rol": "A5", "red": "PACORA", "padres": ["LA00424"]}, "LA00386": {"nombre": "MAYASCON", "tipo": "TERMINAL", "rol": "A6", "red": "PACORA", "padres": ["LA00339"]}, "LA00389": {"nombre": "MOCHUMI_VIEJO", "tipo": "TERMINAL", "rol": "A7", "red": "PACORA", "padres": ["CA00436"]}, "LA00726": {"nombre": "OJO_DE_TORO_PARTE_BAJA", "tipo": "TERMINAL", "rol": "A8", "red": "PACORA", "padres": ["LA00424"]}, "LA00428": {"nombre": "PAMPA_DE_LINO", "tipo": "TERMINAL", "rol": "A9", "red": "PACORA", "padres": ["LA00424"]}, "LA00434": {"nombre": "PATAPO", "tipo": "DISTRITAL", "rol": "D21", "red": "PATAPO", "padres": ["LA00445"]}, "LA00450": {"nombre": "PROGRESO", "tipo": "INTERMEDIO", "rol": "I1", "red": "PATAPO", "padres": ["LA00434"]}, "LA00316": {"nombre": "HUACA_RAJADA", "tipo": "TERMINAL", "rol": "A1", "red": "PATAPO", "padres": ["LA00434"]}, "LA00653": {"nombre": "LAS_CANTERAS", "tipo": "TERMINAL", "rol": "A2", "red": "PATAPO", "padres": ["LA00450"]}, "LA00458": {"nombre": "PUENTE_TULIPE", "tipo": "TERMINAL", "rol": "A3", "red": "PATAPO", "padres": ["LA00450"]}, "LA00438": {"nombre": "PICSI", "tipo": "DISTRITAL", "rol": "D22", "red": "PICSI", "padres": ["LA00445", "LA00353"]}, "LA00423": {"nombre": "PACHERREZ", "tipo": "INTERMEDIO", "rol": "I1", "red": "PICSI", "padres": ["LA00438"]}, "LA00429": {"nombre": "PAMPA_GRANDE", "tipo": "INTERMEDIO", "rol": "I2", "red": "PICSI", "padres": ["LA00423"]}, "LA00259": {"nombre": "COLLIQUE_ALTO", "tipo": "INTERMEDIO", "rol": "I3", "red": "PICSI", "padres": ["LA00423"]}, "LA00345": {"nombre": "LA_CRIA_Y_PAMPA_LA_VICTORIA", "tipo": "INTERMEDIO", "rol": "I4", "red": "PICSI", "padres": ["LA00423"]}, "LA00270": {"nombre": "CUCULI_EL_PALMO_SAN_JUAN", "tipo": "INTERMEDIO", "rol": "I5", "red": "PICSI", "padres": ["LA00429"]}, "LA00239": {"nombre": "CAPOTE", "tipo": "TERMINAL", "rol": "A1", "red": "PICSI", "padres": ["LA00438"]}, "LA00260": {"nombre": "COLLIQUE_BAJO", "tipo": "TERMINAL", "rol": "A2", "red": "PICSI", "padres": ["LA00259"]}, "LA00275": {"nombre": "DESAGUADERO_ZONA_D", "tipo": "TERMINAL", "rol": "A3", "red": "PICSI", "padres": ["LA00423"]}, "LA00477": {"nombre": "SALTUR", "tipo": "TERMINAL", "rol": "A4", "red": "PICSI", "padres": ["LA00345"]}, "LA00508": {"nombre": "TABLAZOS", "tipo": "TERMINAL", "rol": "A5", "red": "PICSI", "padres": ["LA00270"]}, "LA00442": {"nombre": "PITIPO", "tipo": "DISTRITAL", "rol": "D23", "red": "PITIPO", "padres": ["LA00380"]}, "LA00357": {"nombre": "LA_PARED", "tipo": "TERMINAL", "rol": "A1", "red": "PITIPO", "padres": ["LA00442"]}, "LA00501": {"nombre": "SIME", "tipo": "TERMINAL", "rol": "A2", "red": "PITIPO", "padres": ["LA00442"]}, "LA00445": {"nombre": "POMALCA", "tipo": "DISTRITAL", "rol": "D24", "red": "POMALCA", "padres": ["LA00378", "LA00438"]}, "LA00730": {"nombre": "CCPP_PUEBLO_NUEVO", "tipo": "DISTRITAL", "rol": "D25", "red": "PUEBLO NUEVO", "padres": ["LA00390", "LA00303"]}, "LA00471": {"nombre": "REQUE", "tipo": "DISTRITAL", "rol": "D26", "red": "REQUE", "padres": ["LA00371", "LA00296"]}, "LA00723": {"nombre": "VILLA_SAUL_(CALLANCA)", "tipo": "INTERMEDIO", "rol": "I1", "red": "REQUE", "padres": ["LA00471"]}, "LA00236": {"nombre": "CALAZAN", "tipo": "TERMINAL", "rol": "A1", "red": "REQUE", "padres": ["LA00471"]}, "LA00724": {"nombre": "CHOSICA_DEL_NORTE", "tipo": "TERMINAL", "rol": "A2", "red": "REQUE", "padres": ["LA00723"]}, "LA00488": {"nombre": "SAN_PABLO", "tipo": "TERMINAL", "rol": "A3", "red": "REQUE", "padres": ["LA00471"]}, "LA00474": {"nombre": "SALAS", "tipo": "DISTRITAL", "rol": "D27", "red": "SALAS", "padres": ["LA00331"]}, "LA00360": {"nombre": "LA_PENA", "tipo": "INTERMEDIO", "rol": "I1", "red": "SALAS", "padres": ["LA00474"]}, "LA00321": {"nombre": "HUMEDADES_ALTO", "tipo": "INTERMEDIO", "rol": "I2", "red": "SALAS", "padres": ["LA00360"]}, "LA00497": {"nombre": "SHITA_BAJA", "tipo": "INTERMEDIO", "rol": "I3", "red": "SALAS", "padres": ["LA00360"]}, "LA00289": {"nombre": "EL_SAUCE", "tipo": "INTERMEDIO", "rol": "I4", "red": "SALAS", "padres": ["LA00360"]}, "LA00690": {"nombre": "REPETIDOR_SUCCHA", "tipo": "INTERMEDIO", "rol": "I5", "red": "SALAS", "padres": ["LA00497"]}, "LA00309": {"nombre": "HIGUERON_2", "tipo": "TERMINAL", "rol": "A1", "red": "SALAS", "padres": ["LA00289"]}, "LA00322": {"nombre": "HUMEDADES_BAJO", "tipo": "TERMINAL", "rol": "A2", "red": "SALAS", "padres": ["LA00321"]}, "LA00408": {"nombre": "NORIA_NUEVA", "tipo": "TERMINAL", "rol": "A3", "red": "SALAS", "padres": ["LA00321"]}, "LA00507": {"nombre": "SUCCHA", "tipo": "TERMINAL", "rol": "A4", "red": "SALAS", "padres": ["LA00690"]}, "LA00511": {"nombre": "TEMPON_BAJO", "tipo": "TERMINAL", "rol": "A5", "red": "SALAS", "padres": ["LA00321"]}, "LA00482": {"nombre": "SAN_JOSE", "tipo": "DISTRITAL", "rol": "D28", "red": "SAN JOSE", "padres": []}, "LA00256": {"nombre": "CIUDAD_DE_DIOS", "tipo": "TERMINAL", "rol": "A1", "red": "SAN JOSE", "padres": ["LA00482"]}, "LA00728": {"nombre": "ZANA", "tipo": "DISTRITAL", "rol": "D29", "red": "SAÑA", "padres": ["LA00243"]}, "LA00356": {"nombre": "LA_OTRA_BANDA", "tipo": "TERMINAL", "rol": "A1", "red": "SAÑA", "padres": ["LA00728"]}, "LA00487": {"nombre": "SAN_NICOLAS", "tipo": "TERMINAL", "rol": "A2", "red": "SAÑA", "padres": ["LA00728"]}, "LA00517": {"nombre": "TUCUME", "tipo": "DISTRITAL", "rol": "D30", "red": "TUCUME", "padres": ["LA00323", "LA00390"]}, "LA00283": {"nombre": "EL_HORCON", "tipo": "TERMINAL", "rol": "A1", "red": "TUCUME", "padres": ["LA00517"]}, "LA00287": {"nombre": "EL_PAVO", "tipo": "TERMINAL", "rol": "A2", "red": "TUCUME", "padres": ["LA00517"]}, "LA00358": {"nombre": "LA_PAVA", "tipo": "TERMINAL", "rol": "A3", "red": "TUCUME", "padres": ["LA00517"]}, "LA00377": {"nombre": "LOS_POSITOS", "tipo": "TERMINAL", "rol": "A4", "red": "TUCUME", "padres": ["LA00517"]}, "LA00247": {"nombre": "CHICLAYO_C.MANTENIMIENTO_ACCESO", "tipo": "DISTRITAL", "rol": "D31", "red": "CENTRO DE MANTENIMIENTO", "padres": []}, "LA00406": {"nombre": "NOC_ACCESO", "tipo": "DISTRITAL", "rol": "D32", "red": "NOC", "padres": []}}, "totals": {"D": 33, "I": 69, "T": 145, "total": 247}};
 const NTP=D.NT_POSITIONS,ENL=D.ENLACES,NTD=D.NT_DIST,ACC=D.access_nodes,TOT=D.totals;
-const cortados=new Set(),criticos_idx=new Set();
-let modo='corte',sc=1,ox=80,oy=120,drag=false,lx=0,ly=0,hov=null;
-const canvas=document.getElementById('c'),ctx=canvas.getContext('2d'),wrap=document.getElementById('cw');
 
+// ═══════════════════════════════════════════════════════════════════
+//  ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════════════════
+const cortados=new Set(),cortados_auto=new Set(),criticos_idx=new Set();
+let modo='corte',sc=1,ox=80,oy=120,drag=false,lx=0,ly=0,hov=null;
+// NTD inverso: code → topologyId (se construye una vez al cargar datos)
+let ntd_rev=null;
+let nodesGlobal={};       // nodos desde BD con campos infinera/neteco
+let resultados_global=null;
+/* @license MIT v3.2.1 */
+// Overrides: cargados desde Drive (overrides.json)
+let overrides_global={causas:{},sociales:{}};
+let modal_current_root=null; // root code being edited
+const HOY=()=>new Date().toISOString().slice(0,10); // "YYYY-MM-DD"
+
+// ═══════════════════════════════════════════════════════════════════
+//  SIMULADOR — CANVAS
+// ═══════════════════════════════════════════════════════════════════
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d'),wrap=document.getElementById('cw');
 function resize(){canvas.width=wrap.clientWidth;canvas.height=wrap.clientHeight;draw();}
 window.addEventListener('resize',resize);
-/* @license MIT v2.1.0 */
 
 function getAlc(){
   const vis=new Set(),q=['LAS_BRISAS'];
@@ -140,23 +344,30 @@ function getAlc(){
     const cur=q.shift();if(vis.has(cur))continue;vis.add(cur);
     for(const[a,b]of ENL.map(e=>[e[0],e[1]])){
       const k1=a+'|'+b,k2=b+'|'+a;
-      if(a===cur&&!cortados.has(k1)&&!cortados.has(k2)&&!vis.has(b))q.push(b);
-      if(b===cur&&!cortados.has(k1)&&!cortados.has(k2)&&!vis.has(a))q.push(a);
+      // Corte manual O corte automático desde Infinera
+      const cut=cortados.has(k1)||cortados.has(k2)||cortados_auto.has(k1)||cortados_auto.has(k2);
+/* build:production bundle */
+      if(a===cur&&!cut&&!vis.has(b))q.push(b);
+      if(b===cur&&!cut&&!vis.has(a))q.push(a);
     }
   }
   return vis;
 }
 
 function calcImpacto(){
-/* build:production minified */
+  // BFS desde LAS_BRISAS con ambos sets de cortes (manual + auto)
+  // Los nodos cuyo enlace está en cortados_auto quedarán fuera del BFS
+  // exactamente igual que si el usuario lo cortara manualmente
   const alc=getAlc(),ais=Object.keys(NTP).filter(k=>!alc.has(k));
   const fallen=new Set();
   for(const nt of ais){const d=NTD[nt];if(d)fallen.add(d);}
+  // Cascada jerárquica ACC (intermedios y terminales)
   let changed=true;
   while(changed){
     changed=false;
     for(const[cod,node]of Object.entries(ACC)){
       if(fallen.has(cod))continue;
+/* @preserve Copyright 2024-2026 */
       const ps=node.padres||[];
       if(ps.length>0&&ps.every(p=>fallen.has(p))){fallen.add(cod);changed=true;}
     }
@@ -164,7 +375,6 @@ function calcImpacto(){
   return{alc,ais,fallen};
 }
 
-/* @preserve Copyright 2024 */
 function updateStats(){
   const{fallen}=calcImpacto();
   const dist=[...fallen].filter(c=>ACC[c]?.tipo==='DISTRITAL');
@@ -178,90 +388,70 @@ function updateStats(){
   document.getElementById('s-ic').textContent=inter.length;
   document.getElementById('s-ia').textContent=TOT.I-inter.length;
   document.getElementById('s-tc').textContent=term.length;
+/* chunk:core-v3 loaded */
   document.getElementById('s-ta').textContent=TOT.T-term.length;
   const badge=document.getElementById('badge');
-/* chunk:core loaded */
-  badge.style.display=cortados.size>0?'flex':'none';
-  document.getElementById('n-cortes').textContent=cortados.size;
-  const lista=document.getElementById('lista');
-  if(dist.length===0){
-    lista.innerHTML='<div style="color:#6b7280;font-size:11px;padding:8px 4px">Sin impacto en distritales.</div>';
-  } else {
-    lista.innerHTML=dist.sort((a,b)=>(ACC[a]?.rol||'').localeCompare(ACC[b]?.rol||'')).map(c=>{
-      const n=ACC[c];
-      return`<div class="ci"><span class="ro">${n?.rol||'?'}</span><div><div class="no">${n?.nombre||c}</div><div class="re">${n?.red||''}</div></div></div>`;
-    }).join('');
-  }
+  badge.style.display=(cortados.size>0||cortados_auto.size>0)?'flex':'none';
+  const nAuto=cortados_auto.size>0?`⚡ ${[...new Set(Object.values(NTD).filter(c=>cortados_auto.size>0))].filter(c=>{const nt=ntd_rev&&ntd_rev[c];return nt&&(cortados_auto.has(nt+'|'+Object.keys(NTP)[0])||[...cortados_auto].some(k=>k.startsWith(nt+'|')||k.endsWith('|'+nt)));}).length||'?'} auto`:'';
+  document.getElementById('n-cortes').textContent=cortados_auto.size>0?`⚡ auto-cortados`:cortados.size+' manual(es)';
+  actualizarPanelLateral(dist,fallen);
 }
 
 const EC={ANILLO_COSTA:'#f59e0b',ANILLO_NORTE:'#38bdf8',ANILLO_INTERIOR:'#4ade80',RAMAL:'#64748b'};
 const TC={CORE:'#3b82f6',ANILLO_COSTA:'#f59e0b',ANILLO_NORTE:'#38bdf8',ANILLO_INTERIOR:'#4ade80',RAMAL:'#94a3b8'};
-/* module:renderer v3 */
-
 function toC(x,y){return[x*sc+ox,y*sc+oy];}
 function frC(cx,cy){return[(cx-ox)/sc,(cy-oy)/sc];}
 
 function draw(){
   const W=canvas.width,H=canvas.height;
   ctx.clearRect(0,0,W,H);
-  // Grid
   ctx.strokeStyle='#161b22';ctx.lineWidth=1;
   const gs=60*sc,gox=((ox%gs)+gs)%gs,goy=((oy%gs)+gs)%gs;
   for(let x=gox;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
   for(let y=goy;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-
+/* module:renderer initialized */
   const{alc,fallen}=calcImpacto();
-
-/* @internal do not modify */
-  // Ring zone labels
   if(sc>0.45){
-    const labs=[
-      {x:410,y:545,t:'ANILLO COSTA',c:'#f59e0b'},
-      {x:550,y:307,t:'ANILLO NORTE',c:'#38bdf8'},
-      {x:220,y:165,t:'ANILLO INTERIOR',c:'#4ade80'},
-    ];
+    const labs=[{x:410,y:545,t:'ANILLO COSTA',c:'#f59e0b'},{x:550,y:307,t:'ANILLO NORTE',c:'#38bdf8'},{x:220,y:165,t:'ANILLO INTERIOR',c:'#4ade80'}];
     ctx.textAlign='center';
     for(const lb of labs){
       const[cx,cy]=toC(lb.x,lb.y);
       ctx.font=`bold ${Math.max(9,10.5*Math.min(sc,1.1))}px 'Segoe UI'`;
-      ctx.fillStyle=lb.c+'40';
-      ctx.fillText(lb.t,cx,cy);
+      ctx.fillStyle=lb.c+'40';ctx.fillText(lb.t,cx,cy);
     }
   }
-
-  // Draw enlaces
   for(let i=0;i<ENL.length;i++){
     const[a,b,tipo]=ENL[i];
     const k1=a+'|'+b;
-    const cortado=cortados.has(k1)||cortados.has(b+'|'+a);
-    const isHov=hov===i;
-    const isCrit=criticos_idx.has(i)&&!cortado;
+    const cortado_m=cortados.has(k1)||cortados.has(b+'|'+a);   // corte manual
+    const cortado_a=cortados_auto.has(k1)||cortados_auto.has(b+'|'+a); // corte auto
+    const cortado=cortado_m||cortado_a;
+    const isHov=hov===i,isCrit=criticos_idx.has(i)&&!cortado;
     const ap=NTP[a],bp=NTP[b];if(!ap||!bp)continue;
     const[ax,ay]=toC(ap.x,ap.y),[bx,by]=toC(bp.x,bp.y);
     ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);
-    if(cortado){
-      ctx.strokeStyle='#ef4444';ctx.lineWidth=isHov?6:3;
-      ctx.setLineDash([10,7]);ctx.globalAlpha=1;
-    }else if(isCrit){
-      ctx.strokeStyle='#f97316';ctx.lineWidth=isHov?5:2.5;
-      ctx.setLineDash([]);ctx.globalAlpha=isHov?1:0.9;
-    }else{
-      ctx.strokeStyle=isHov?'#ffffff':(EC[tipo]||'#64748b');
-      ctx.lineWidth=isHov?5:(tipo==='RAMAL'?1.8:2.8);
-      ctx.setLineDash([]);ctx.globalAlpha=isHov?1:0.8;
-    }
+/* @internal — do not modify */
+    if(cortado_m){ctx.strokeStyle='#ef4444';ctx.lineWidth=isHov?6:3;ctx.setLineDash([10,7]);ctx.globalAlpha=1;}
+    else if(cortado_a){ctx.strokeStyle='#fb923c';ctx.lineWidth=isHov?6:3;ctx.setLineDash([8,6]);ctx.globalAlpha=1;}
+    else if(isCrit){ctx.strokeStyle='#f97316';ctx.lineWidth=isHov?5:2.5;ctx.setLineDash([]);ctx.globalAlpha=isHov?1:0.9;}
+    else{ctx.strokeStyle=isHov?'#ffffff':(EC[tipo]||'#64748b');ctx.lineWidth=isHov?5:(tipo==='RAMAL'?1.8:2.8);ctx.setLineDash([]);ctx.globalAlpha=isHov?1:0.8;}
     ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
-    if(cortado){
+    if(cortado_m){
       const mx=(ax+bx)/2,my=(ay+by)/2,s=7;
       ctx.strokeStyle='#ef4444';ctx.lineWidth=2.5;
-      ctx.beginPath();ctx.moveTo(mx-s,my-s);ctx.lineTo(mx+s,my+s);
-      ctx.moveTo(mx+s,my-s);ctx.lineTo(mx-s,my+s);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(mx-s,my-s);ctx.lineTo(mx+s,my+s);ctx.moveTo(mx+s,my-s);ctx.lineTo(mx-s,my+s);ctx.stroke();
+    }
+    if(cortado_a){
+      // Símbolo ⚡ (auto-Infinera): rayo pequeño en el centro del enlace
+      const mx=(ax+bx)/2,my=(ay+by)/2,s=6;
+      ctx.strokeStyle='#fb923c';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(mx,my-s);ctx.lineTo(mx-s*0.5,my+s*0.2);ctx.lineTo(mx+s*0.3,my);ctx.lineTo(mx,my+s);ctx.stroke();
     }
   }
-
-  // Draw nodos
   for(const[id,nt]of Object.entries(NTP)){
     const[cx,cy]=toC(nt.x,nt.y);
+    // aislado = no alcanzable desde LAS_BRISAS (por corte manual O auto — ambos vía BFS)
+/* bundle:analysis-worker */
     const aislado=!alc.has(id);
     const hasDist=NTD[id];
     const distCaido=hasDist&&fallen.has(hasDist);
@@ -282,6 +472,7 @@ function draw(){
       ctx.font=`${fz}px 'Segoe UI',sans-serif`;
       ctx.fillStyle=aislado?'#f87171':'#cbd5e1';
       ctx.textAlign='center';ctx.shadowBlur=0;
+/* @compiled 2026-06-10 */
       ctx.fillText(nt.nombre,cx,cy+r+fz*1.15);
     }
   }
@@ -308,15 +499,13 @@ canvas.addEventListener('mousemove',e=>{
   const tip=document.getElementById('tip');
   if(idx!==null){
     const[a,b,tipo]=ENL[idx];
-    const k1=a+'|'+b;
-    const cortado=cortados.has(k1)||cortados.has(b+'|'+a);
-    const isCrit=criticos_idx.has(idx);
-    const sc2=EC[tipo]||'#94a3b8';
+    const k1=a+'|'+b;const cortado=cortados.has(k1)||cortados.has(b+'|'+a);
+    const isCrit=criticos_idx.has(idx);const sc2=EC[tipo]||'#94a3b8';
     tip.innerHTML=`<h4 style="color:${sc2}">${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}</h4>
-      <div class="tr"><span class="tl">Segmento:</span><span class="tv" style="color:${sc2}">${tipo.replace(/_/g,' ')}</span></div>
-      <div class="tr"><span class="tl">Estado:</span><span class="tv" style="color:${cortado?'#ef4444':'#22c55e'}">${cortado?'✂️ CORTADO':'✅ ACTIVO'}</span></div>
-      ${isCrit?'<div class="tr"><span style="color:#f97316;font-size:10px">⚠️ Enlace crítico</span></div>':''}
-      <div class="th" style="color:${cortado?'#ef4444':'#6b7280'}">${cortado?'▶ Clic para RESTAURAR':'▶ Clic para CORTAR'}</div>`;
+      <div class="tr2"><span class="tl">Segmento:</span><span class="tv" style="color:${sc2}">${tipo.replace(/_/g,' ')}</span></div>
+      <div class="tr2"><span class="tl">Estado:</span><span class="tv" style="color:${cortado?'#ef4444':'#22c55e'}">${cortado?'✂️ CORTADO':'✅ ACTIVO'}</span></div>
+      ${isCrit?'<div class="tr2"><span style="color:#f97316;font-size:10px">⚠️ Enlace crítico</span></div>':''}
+      <div class="th2" style="color:${cortado?'#ef4444':'#6b7280'}">${cortado?'▶ Clic para RESTAURAR':'▶ Clic para CORTAR'}</div>`;
     tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-8)+'px';
   }else{tip.style.display='none';}
   canvas.style.cursor=idx!==null?'pointer':(modo==='pan'?'grab':'crosshair');
@@ -330,29 +519,26 @@ canvas.addEventListener('mouseup',e=>{
   const idx=enlaceAt(e.clientX-r.left,e.clientY-r.top);
   if(idx!==null&&modo==='corte'){
     const[a,b]=ENL[idx];const k1=a+'|'+b,k2=b+'|'+a;
-    if(cortados.has(k1)||cortados.has(k2)){
-      cortados.delete(k1);cortados.delete(k2);
-      flash(`✅ Restaurado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'ok');
-    }else{
-      cortados.add(k1);
-      flash(`✂️ Cortado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'err');
-    }
+    if(cortados.has(k1)||cortados.has(k2)){cortados.delete(k1);cortados.delete(k2);flash(`✅ Restaurado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'ok');}
+    else{cortados.add(k1);flash(`✂️ Cortado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'err');}
     updateStats();draw();
   }
 });
 canvas.addEventListener('wheel',e=>{
   e.preventDefault();
-  const r=canvas.getBoundingClientRect();
-  const mx=e.clientX-r.left,my=e.clientY-r.top;
-  const f=e.deltaY<0?1.11:0.90;
-  ox=mx-(mx-ox)*f;oy=my-(my-oy)*f;sc=Math.max(0.2,Math.min(5,sc*f));draw();
+  const r=canvas.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;
+  const f=e.deltaY<0?1.11:0.90;ox=mx-(mx-ox)*f;oy=my-(my-oy)*f;sc=Math.max(0.2,Math.min(5,sc*f));draw();
 },{passive:false});
 
 function flash(txt,tipo){
   const el=document.getElementById('inf');el.textContent=txt;el.className=tipo;
   el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2500);
 }
-function resetAll(){cortados.clear();criticos_idx.clear();updateStats();draw();flash('✅ Todos los enlaces restaurados','ok');}
+function resetAll(){
+  cortados.clear();criticos_idx.clear();
+  updateStats();draw();
+  flash('✅ Cortes manuales restaurados (Infinera activo)','ok');
+}
 function setModo(m){
   modo=m;
   document.querySelectorAll('.mb').forEach((b,i)=>b.classList.toggle('active',['corte','pan'][i]===m));
@@ -368,18 +554,740 @@ function mostrarCriticos(){
   draw();flash(`⚠️ ${criticos_idx.size} enlace(s) crítico(s) en naranja`,'warn');
 }
 function ocultarCriticos(){criticos_idx.clear();draw();flash('🔲 Resaltado ocultado','ok');}
-
 function fitView(){
   const pts=Object.values(NTP);
   const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
-  const minX=Math.min(...xs),maxX=Math.max(...xs);
-  const minY=Math.min(...ys),maxY=Math.max(...ys);
-  const pad=70;
-  const sw=canvas.width-pad*2,sh=canvas.height-pad*2;
+  const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+  const pad=70;const sw=canvas.width-pad*2,sh=canvas.height-pad*2;
   sc=Math.min(sw/(maxX-minX),sh/(maxY-minY))*0.90;
-  ox=pad-minX*sc+(sw-(maxX-minX)*sc)/2;
-  oy=pad-minY*sc+(sh-(maxY-minY)*sc)/2;
+  ox=pad-minX*sc+(sw-(maxX-minX)*sc)/2;oy=pad-minY*sc+(sh-(maxY-minY)*sc)/2;
 }
-resize();fitView();updateStats();draw();</script>
+
+// ═══════════════════════════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════════════════════════
+function switchTab(id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['sim','dash'][i]===id));
+  document.getElementById('tab-'+id).classList.add('active');
+  if(id==='sim'){setTimeout(()=>{resize();draw();},30);}
+  if(id==='dash'&&resultados_global){actualizarDashboard(resultados_global);}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CONSTANTES ANÁLISIS
+// ═══════════════════════════════════════════════════════════════════
+const CAUSA_ORDEN={PRONATEL:0,ENERGETICO:1,RADIO:2,POR_DEFINIR:3,SOCIAL:4};
+const CAUSA_LABELS={PRONATEL:'Transporte PRONATEL',ENERGETICO:'Factor Energético',RADIO:'Factor Radio',POR_DEFINIR:'Por definir',SOCIAL:'Causa social'};
+const CAUSA_CLR={'PRONATEL':'#B91C1C','ENERGETICO':'#B45309','RADIO':'#1D4ED8','POR_DEFINIR':'#6B21A8','SOCIAL':'#C2410C'};
+const CAUSA_CLR_HEX={'PRONATEL':'B91C1C','ENERGETICO':'B45309','RADIO':'1D4ED8','POR_DEFINIR':'6B21A8','SOCIAL':'C2410C'};
+const NETECO_COMM=new Set(['Communication Between NMS And NE Is Abnormal','AC Failure/Communication Between NMS And NE Is Abnormal']);
+const NETECO_ENERGY=new Set(['AC Failure','Mains Failure','BLVD Low Voltage Disconnected','LLVD Low Voltage Disconnected']);
+const SOCIAL_OVR=new Set(['LA00692']);
+
+// ═══════════════════════════════════════════════════════════════════
+//  PARSEO BD (Excel)
+// ═══════════════════════════════════════════════════════════════════
+function parseBD(b64){
+  const wb=XLSX.read(b64,{type:'base64'});
+  const ws=wb.Sheets['BD_COMPLETA'];
+  if(!ws)throw new Error("Hoja 'BD_COMPLETA' no encontrada en el Excel BD");
+  const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  const h=raw[1]||[];
+  const fi=name=>h.findIndex(c=>String(c).trim()===name);
+  const iCod=fi('CÓDIGO'),iNet=fi('NOMBRE NODO_NETECO'),iRed=fi('RED DISTRITAL');
+  const iTipo=fi('TIPO'),iRol=fi('ROL'),iPad=fi('CÓD. PADRE'),iInf=fi('NOMBRE INFINERA');
+  if(iCod<0)throw new Error("Columna 'CÓDIGO' no encontrada en BD_COMPLETA");
+  const nodes={},infinera_map={},neteco_map={};
+  for(let i=2;i<raw.length;i++){
+    const r=raw[i];
+    const code=String(r[iCod]||'').trim();
+    if(!/^LA\d+/.test(code))continue;
+    const padre_raw=String(r[iPad]||'');
+    const padres=padre_raw.match(/LA\d+/g)||[];
+    const inf_name=iInf>=0?String(r[iInf]||'').trim().toUpperCase():'';
+    const net_name=iNet>=0?String(r[iNet]||'').trim().toUpperCase():'';
+    const nombre=iNet>=0?String(r[iNet]||'').trim():'';
+    nodes[code]={code,name:nombre,nombre,red:iRed>=0?String(r[iRed]||'').trim():'',
+      tipo:iTipo>=0?String(r[iTipo]||'').trim():'',
+      rol:iRol>=0?String(r[iRol]||'').trim():'',
+      padres,doble:padres.length>1,infinera:inf_name};
+    if(inf_name)infinera_map[inf_name]=code;
+    if(net_name)neteco_map[net_name]=code;
+  }
+  if(!Object.keys(nodes).length)throw new Error("No se encontraron nodos LA##### en BD_COMPLETA");
+  return{nodes,infinera_map,neteco_map};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PARSEO INFINERA CSV
+// ═══════════════════════════════════════════════════════════════════
+function parseInfinera(b64,infinera_map){
+  const bin=atob(b64.replace(/\s/g,''));
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  let text;
+  try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}
+  catch{text=new TextDecoder('latin-1').decode(bytes);}
+  if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
+  const lines=text.split(/\r?\n/);
+  if(lines.length<2)throw new Error('CSV Infinera vacío o sin datos');
+  const headers=lines[0].split(';').map(h=>h.trim().replace(/^"|"$/g,''));
+  const iName=headers.indexOf('Node Name');
+  const iDur=headers.indexOf('Duration');
+  const iTime=headers.indexOf('On-Time');
+  if(iName<0)throw new Error(`CSV Infinera sin columna 'Node Name'. Columnas: ${headers.slice(0,8).join(', ')}`);
+  const alarms={};
+  for(let i=1;i<lines.length;i++){
+    const row=lines[i].split(';').map(c=>c.trim().replace(/^"|"$/g,''));
+    if(row.length<2)continue;
+    const nodeName=row[iName]||'';
+    if(!nodeName||/PRUEBA/i.test(nodeName))continue;
+    const code=infinera_map[nodeName.toUpperCase()];
+    if(!code)continue;
+    const durStr=iDur>=0?(row[iDur]||'0:0:0:0'):'0:0:0:0';
+    const days=parseInt(durStr.split(':')[0])||0;
+    const onTimeStr=iTime>=0?(row[iTime]||''):'';
+    if(!alarms[code])alarms[code]={days,on_time:onTimeStr};
+  }
+  if(!Object.keys(alarms).length)throw new Error('Ningún nodo Infinera cruzó con la BD. Verifica el archivo CSV.');
+  return alarms;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PARSEO NETECO xlsx
+// ═══════════════════════════════════════════════════════════════════
+function parseNetEco(b64,neteco_map){
+  const wb=XLSX.read(b64,{type:'base64'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  // Python: header=None + skiprows=5 → datos desde fila absoluta 5
+  // Columnas fijas: 0=_, 1=Severity, 2=Name(alarma), 3=Site Name, 4=First Occurred
+  const SEV=1,ALARM=2,SITE=3,TIME=4;
+  const neteco_comm={},neteco_energy={};
+  for(let i=5;i<raw.length;i++){
+    const r=raw[i];if(!r||!r[ALARM])continue;
+    const severity=String(r[SEV]||'').trim();
+    const alarm=String(r[ALARM]||'').trim();
+    const site=String(r[SITE]||'').trim().toUpperCase();
+    const time_str=String(r[TIME]||'').trim();
+    const code=neteco_map[site];if(!code)continue;
+    if(NETECO_COMM.has(alarm)&&severity==='Critical'&&!neteco_comm[code]){
+      neteco_comm[code]=time_str;
+    }
+    if(NETECO_ENERGY.has(alarm)){
+      if(!neteco_energy[code])neteco_energy[code]=[];
+      neteco_energy[code].push({type:alarm,on_time:time_str});
+    }
+  }
+  return{neteco_comm,neteco_energy};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ANÁLISIS
+// ═══════════════════════════════════════════════════════════════════
+function tieneEnergiaPrevia(code,comm_time,neteco_energy){
+  if(!neteco_energy[code]||!comm_time)return false;
+  const tc=new Date(comm_time);if(isNaN(tc))return false;
+  for(const e of neteco_energy[code]){
+    const te=new Date(e.on_time);if(!isNaN(te)&&te<tc)return true;
+  }
+  return false;
+}
+
+function clasificarRaiz(code,nodes_all,inf_alarms,neteco_comm,neteco_energy){
+  // 1. Override manual de causa raíz (técnico editó)
+  const ovrCausa=(overrides_global.causas||{})[code];
+  if(ovrCausa)return{causa:ovrCausa.causa,detalle:ovrCausa.nota?`✏️ ${ovrCausa.nota}`:'Override manual'};
+  // 2. Override social dinámico (gestión desde panel)
+  if((overrides_global.sociales||{})[code])
+    return{causa:'SOCIAL',detalle:`📌 ${overrides_global.sociales[code].motivo}`};
+  // 3. SOCIAL_OVR estático (LA00692 fallback mientras no hay panel cargado)
+  if(SOCIAL_OVR.has(code))return{causa:'SOCIAL',detalle:'Caso social confirmado'};
+  // 4. Análisis automático
+  if(!neteco_comm[code])return{causa:'POR_DEFINIR',detalle:'Sin alarma NetEco'};
+  if(tieneEnergiaPrevia(code,neteco_comm[code],neteco_energy))
+    return{causa:'ENERGETICO',detalle:'Fallo energético previo'};
+  const rol=(nodes_all[code]?.rol||'');
+  return{causa:rol.startsWith('D')?'PRONATEL':'RADIO',detalle:'OK'};
+}
+
+function encontrarRaiz(code,nodes_all,sin_servicio){
+  const visited=new Set();let cur=code;
+  while(cur){
+    if(visited.has(cur))break;visited.add(cur);
+    const node=nodes_all[cur]||{};
+    const padres=node.padres||[];
+    if(!padres.length)return cur;
+    const caidos=padres.filter(p=>sin_servicio.has(p));
+    if(caidos.length===padres.length)cur=caidos[0];else return cur;
+  }
+  return cur;
+}
+
+function expandirSubtree(root,nodes_all,sin_servicio){
+  const children={};
+  for(const[code,node]of Object.entries(nodes_all))
+    for(const p of(node.padres||[])){if(!children[p])children[p]=[];children[p].push(code);}
+  const result=new Set();const stack=[root];
+  while(stack.length){
+    const c=stack.pop();if(!sin_servicio.has(c))continue;
+    const padres_c=(nodes_all[c]||{}).padres||[];
+    const ok=c===root||!padres_c.length||padres_c.every(p=>sin_servicio.has(p));
+    if(!ok)continue;result.add(c);
+    for(const ch of(children[c]||[]))stack.push(ch);
+  }
+  return result;
+}
+
+function analizarIncidencias(nodes_bd,inf_alarms,neteco_comm,neteco_energy){
+  // Merge BD + ACC (embedded), BD toma prioridad
+  const nodes_all={};
+  for(const[k,v]of Object.entries(ACC))
+    nodes_all[k]={...v,name:v.nombre||k};
+  for(const[k,v]of Object.entries(nodes_bd))
+    nodes_all[k]=v;
+  nodesGlobal=nodes_all;
+
+  const sin_servicio=new Set(Object.keys(inf_alarms));
+  if(!sin_servicio.size)return{incidencias:[],sin_servicio};
+  // Raíces
+  const by_root={};
+  for(const code of sin_servicio){
+    const root=encontrarRaiz(code,nodes_all,sin_servicio);
+    if(!by_root[root])by_root[root]=new Set();
+    by_root[root].add(code);
+  }
+  const incidencias=[];
+  const sociales_dinamicos=new Set([...Object.keys(overrides_global.sociales||{}),...SOCIAL_OVR]);
+
+  for(const[root]of Object.entries(by_root)){
+    const members=expandirSubtree(root,nodes_all,sin_servicio);
+    const{causa,detalle}=clasificarRaiz(root,nodes_all,inf_alarms,neteco_comm,neteco_energy);
+    const root_days=inf_alarms[root]?.days||0;
+    const max_days=[...members].reduce((m,c)=>Math.max(m,inf_alarms[c]?.days||0),0);
+    const days_dist={};
+    for(const m of members){const d=inf_alarms[m]?.days||0;if(!days_dist[d])days_dist[d]=[];days_dist[d].push(m);}
+    // Detectar nodos sociales incluidos como miembros (no son la raíz)
+    const soc_miembros=[...members].filter(c=>c!==root&&sociales_dinamicos.has(c));
+    const nota_social=soc_miembros.length>0
+      ?` · 📌 Incluye nodo social: ${soc_miembros.map(c=>(nodes_all[c]?.name||c).replace(/_/g,' ')).join(', ')}`
+      :'';
+    incidencias.push({root,members,count:members.size,causa,
+      detalle_causa:detalle+nota_social,
+      days:root_days,root_days,max_days,days_dist,
+      on_time:inf_alarms[root]?.on_time,
+      intermitencia:max_days!==root_days,
+      nota_social});
+  }
+  incidencias.sort((a,b)=>{
+    const oa=CAUSA_ORDEN[a.causa]??9,ob=CAUSA_ORDEN[b.causa]??9;
+    return oa!==ob?oa-ob:b.root_days-a.root_days;
+  });
+  return{incidencias,sin_servicio};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TEXTOS INCIDENCIA
+// ═══════════════════════════════════════════════════════════════════
+function titleCase(s){return s.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());}
+
+function notaIntermitencia(inc){
+  const rname=(nodesGlobal[inc.root]?.name||inc.root).replace(/_/g,' ').split(' ')[0];
+  const parts=[];
+  for(const[d,codes]of Object.entries(inc.days_dist).sort((a,b)=>Number(a[0])-Number(b[0]))){
+    const n=codes.length,ds=`${d} día${d!='1'?'s':''}`;
+    if(codes.includes(inc.root)){const nd=n-1;parts.push(nd>0?`${rname}+${nd}dep.—${ds}`:`${rname}—${ds}`);}
+    else parts.push(`${n}dep.—${ds}`);
+  }
+  return'⚠ '+parts.join(' | ');
+}
+
+function construirTexto(inc){
+  const n=nodesGlobal[inc.root]||{};
+  const red=n.red||'';
+  const nombre=(n.name||n.nombre||inc.root).replace(/_/g,' ');
+  const nombre_uc=nombre.toUpperCase();
+  const doble=n.doble||false;
+  const es_d=(n.rol||'').startsWith('D');
+  if(inc.count===1){
+    if(inc.causa==='SOCIAL')return[`${nombre_uc} (${red})`,'Nodo terminal aislado, gestión en campo'];
+    const tipo=es_d?'Nodo distrital aislado':'Nodo aislado';
+    return[`${nombre_uc} (${red})`,tipo+(doble?' (doble enlace)':'')];
+  }
+  const titulo=es_d?`Red ${titleCase(nombre)}`+(doble?' (doble enlace)':''):`${nombre_uc} (${red})`;
+  const i_n=[...inc.members].filter(c=>(nodesGlobal[c]?.rol||'').startsWith('I')).length;
+  const a_n=[...inc.members].filter(c=>{const r=nodesGlobal[c]?.rol||'';return!r.startsWith('D')&&!r.startsWith('I');}).length;
+  const detalle=inc.intermitencia?notaIntermitencia(inc):`${i_n} interm. → ${a_n} terminales`;
+  return[titulo,detalle];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DASHBOARD UI
+// ═══════════════════════════════════════════════════════════════════
+function actualizarDashboard({incidencias,sin_servicio}){
+  const nSin=sin_servicio.size,nCon=TOT.total-nSin;
+  document.getElementById('kv-tot').textContent=TOT.total;
+  document.getElementById('kv-con').textContent=nCon;
+  document.getElementById('kv-sin').textContent=nSin;
+  document.getElementById('kv-inc').textContent=incidencias.length;
+  const now=new Date();
+  const fmt=`${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  document.getElementById('fecha-rep').textContent=fmt;
+  const tbody=document.getElementById('tbl-body');
+  if(!incidencias.length){
+    tbody.innerHTML='<tr><td colspan="7" class="no-data">✅ Sin incidencias activas — red totalmente operativa</td></tr>';
+  }else{
+    tbody.innerHTML=incidencias.map((inc,i)=>{
+      const[titulo,detalle]=construirTexto(inc);
+      const clr=CAUSA_CLR[inc.causa]||'#6b7280';
+      const lbl=CAUSA_LABELS[inc.causa]||inc.causa;
+      const dm=inc.intermitencia?`<span style="color:#f59e0b">${inc.root_days}⚠</span>`:inc.root_days;
+      const hasOvr=!!(overrides_global.causas||{})[inc.root];
+      const editTitle=hasOvr?'Override activo — clic para editar':'Editar causa raíz';
+      return`<tr>
+        <td class="tc" style="color:#6b7280">${i+1}</td>
+        <td><span class="tag" style="background:${clr}22;color:${clr};border:1px solid ${clr}55">${lbl}</span>${hasOvr?'<span style="color:#f59e0b;font-size:9px;margin-left:4px">✏️</span>':''}</td>
+        <td class="tbold">${titulo}</td>
+        <td class="tc tbold">${inc.count}</td>
+        <td class="tc tbold">${dm}</td>
+        <td class="det">${detalle}</td>
+        <td class="tc"><button onclick="abrirEditCausa('${inc.root}')" title="${editTitle}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;color:${hasOvr?'#f59e0b':'#374151'}" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='none'">✏️</button></td>
+      </tr>`;
+    }).join('');
+  }
+  dibujarDonut(incidencias);
+  const cnt={};for(const inc of incidencias)cnt[inc.causa]=(cnt[inc.causa]||0)+1;
+  const partes=Object.entries(cnt).sort((a,b)=>(CAUSA_ORDEN[a[0]]??9)-(CAUSA_ORDEN[b[0]]??9)).map(([c,n])=>`${n} ${CAUSA_LABELS[c]}`);
+  document.getElementById('dash-foot').textContent=nSin>0?`${nSin} nodos sin servicio — ${partes.join(' | ')}.`:'Red operativa al 100%.';
+  renderPanelSocial();
+}
+
+function dibujarDonut(incidencias){
+  const cvs=document.getElementById('donut'),ctx2=cvs.getContext('2d');
+  const cx=cvs.width/2,cy=cvs.height/2,ro=88,ri=50;
+  ctx2.clearRect(0,0,cvs.width,cvs.height);
+  const cnt={};for(const inc of incidencias)cnt[inc.causa]=(cnt[inc.causa]||0)+1;
+  const total=Object.values(cnt).reduce((a,b)=>a+b,0);
+  if(!total)return;
+  const orden=['PRONATEL','ENERGETICO','RADIO','POR_DEFINIR','SOCIAL'].filter(c=>cnt[c]);
+  let start=-Math.PI/2;
+  for(const causa of orden){
+    const angle=(cnt[causa]/total)*Math.PI*2;
+    ctx2.beginPath();ctx2.moveTo(cx,cy);ctx2.arc(cx,cy,ro,start,start+angle);ctx2.closePath();
+    ctx2.fillStyle=CAUSA_CLR[causa];ctx2.fill();start+=angle;
+  }
+  ctx2.beginPath();ctx2.arc(cx,cy,ri,0,Math.PI*2);ctx2.fillStyle='#0d1117';ctx2.fill();
+  ctx2.fillStyle='#e6edf3';ctx2.font='bold 22px Segoe UI';ctx2.textAlign='center';
+  ctx2.fillText(incidencias.length,cx,cy-3);
+  ctx2.font='10px Segoe UI';ctx2.fillStyle='#6b7280';ctx2.fillText('incidencias',cx,cy+14);
+  document.getElementById('dleg').innerHTML=orden.map(c=>{
+    const pct=Math.round(cnt[c]/total*100);
+    return`<div class="li2"><span class="ld2" style="background:${CAUSA_CLR[c]}"></span><span class="ll2">${CAUSA_LABELS[c]}</span><span class="lv2">${cnt[c]}</span></div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ACTUALIZAR SIMULADOR DESDE INFINERA
+// ═══════════════════════════════════════════════════════════════════
+function buildNtdRev(){
+  ntd_rev={};
+  for(const[ntId,code]of Object.entries(NTD))ntd_rev[code]=ntId;
+}
+
+function actualizarSimulador(sin_servicio){
+  if(!ntd_rev)buildNtdRev();
+  cortados_auto.clear();
+  // Para cada distrital sin servicio → cortar todos sus enlaces en la topología
+  for(const code of sin_servicio){
+    const ntId=ntd_rev[code];
+    if(!ntId)continue;
+    for(const[a,b]of ENL.map(e=>[e[0],e[1]])){
+      if(a===ntId||b===ntId)cortados_auto.add(a+'|'+b);
+    }
+  }
+  // El BFS de getAlc() respetará cortados_auto → cascada ACC natural
+  updateStats();draw();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CARGA DE DATOS DESDE DRIVE
+// ═══════════════════════════════════════════════════════════════════
+async function cargarTodo(manual=false){
+  if(cargando)return;cargando=true;
+  const btn=document.getElementById('btn-act');
+  btn.textContent='⏳ Cargando...';btn.disabled=true;
+  setSt('bd','⏳ BD...');setSt('inf','⏳ Infinera...');setSt('net','⏳ NetEco...');
+  try{
+    // 1. Cargar overrides PRIMERO (antes del análisis para que apliquen)
+    await cargarOverrides();
+
+    // 2. Listar archivos en Drive
+    const list=await prx('list');
+    if(!list.ok)throw new Error('Error al listar Drive: '+(list.error||'?'));
+    setSt('bd',list.bd?`✅ BD ${fmtD(list.bd.actualizado)}`:'❌ BD no encontrada');
+    setSt('inf',list.infinera?`✅ Inf ${fmtD(list.infinera.actualizado)}`:'❌ Infinera no encontrada');
+    setSt('net',list.neteco?`✅ Net ${fmtD(list.neteco.actualizado)}`:'⚠️ NetEco ausente');
+    if(!list.bd||!list.infinera)throw new Error('Faltan archivos en Drive. Verifica la carpeta.');
+
+    // 3. Descargar BD e Infinera en paralelo (detección robusta: Apps Script elige el más reciente)
+    const[rBD,rInf]=await Promise.all([prx('get','bd'),prx('get','infinera')]);
+    if(!rBD.ok)throw new Error('Error al leer BD: '+(rBD.error||'?'));
+    if(!rInf.ok)throw new Error('Error al leer Infinera: '+(rInf.error||'?'));
+    const{nodes,infinera_map,neteco_map}=parseBD(rBD.data);
+    const inf_alarms=parseInfinera(rInf.data,infinera_map);
+
+    // 4. NetEco (opcional — solo para causa raíz)
+    let neteco_comm={},neteco_energy={};
+    if(list.neteco){
+      try{
+        const rNet=await prx('get','neteco');
+        if(rNet.ok){const r=parseNetEco(rNet.data,neteco_map);neteco_comm=r.neteco_comm;neteco_energy=r.neteco_energy;}
+      }catch(e){console.warn('NetEco parse error:',e.message);}
+    }
+
+    // 5. Analizar (overrides ya cargados → clasificarRaiz los aplica)
+    const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
+    resultados_global=res;
+    actualizarSimulador(res.sin_servicio);
+    actualizarDashboard(res);
+    if(manual)flash('✅ Datos actualizados correctamente','ok');
+  }catch(err){
+    console.error(err);
+    const msg=err.message||String(err);
+    setSt('bd','❌ '+msg.slice(0,50));
+    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="7" class="no-data">❌ ${msg}</td></tr>`;
+    if(manual)flash('❌ '+msg.slice(0,60),'err');
+  }finally{
+    cargando=false;btn.textContent='🔄 Actualizar';btn.disabled=false;
+  }
+}
+
+async function prx(action,tipo='',data=''){
+  let url=PROXY+'?action='+action;
+  if(tipo)url+='&tipo='+tipo;
+  if(data)url+='&data='+encodeURIComponent(data);
+  const res=await fetch(url,{redirect:'follow'});
+  if(!res.ok)throw new Error('HTTP '+res.status+' al llamar al Apps Script');
+  return res.json();
+}
+function setSt(k,txt){const el=document.getElementById('di-'+k);if(el)el.textContent=txt;}
+function fmtD(iso){
+  if(!iso)return'?';const d=new Date(iso);if(isNaN(d))return iso.slice(0,10);
+  return`${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  GENERACIÓN PPT (PptxGenJS)
+// ═══════════════════════════════════════════════════════════════════
+async function generarPPT(){
+  if(!resultados_global){alert('Carga los datos primero.');return;}
+  const st=document.getElementById('ppt-status');
+  const btnP=document.getElementById('btn-ppt');
+  st.textContent='⏳ Generando PPT...';st.style.color='#f59e0b';btnP.disabled=true;
+  try{
+    const pres=new PptxGenJS();
+    pres.layout='LAYOUT_WIDE';
+    const slide=pres.addSlide();
+    slide.background={color:'FFFFFF'};
+    const{incidencias,sin_servicio}=resultados_global;
+    const nSin=sin_servicio.size,nCon=TOT.total-nSin;
+    const now=new Date();
+    const fecha=`${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()}`;
+    const fechaFn=fecha.replace(/\//g,'-');
+
+    // ── HEADER ────────────────────────────────────
+    slide.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:13.33,h:0.55,fill:{color:'1B3A6B'},line:{color:'1B3A6B',pt:0}});
+    slide.addText('ESTADO RED DE ACCESO — LAMBAYEQUE',{x:0.14,y:0.07,w:8.5,h:0.42,fontSize:14,bold:true,color:'FFFFFF',fontFace:'Calibri',valign:'middle',margin:0});
+    slide.addText(fecha,{x:9.3,y:0.07,w:3.9,h:0.22,fontSize:11,color:'BDD7EE',fontFace:'Calibri',align:'right',valign:'middle',margin:0});
+    slide.addText('Elaborado: Operación y Mantenimiento Lambayeque',{x:0.14,y:0.32,w:9,h:0.18,fontSize:7.5,color:'90AACB',fontFace:'Calibri',valign:'middle',margin:0});
+
+    // ── KPI CARDS ─────────────────────────────────
+    const kpis=[
+      {lbl:'TOTAL NODOS',val:String(TOT.total),bg:'1E3A5F',vc:'FFFFFF',lc:'90AACB'},
+      {lbl:'CON SERVICIO',val:String(nCon),bg:'14532D',vc:'22C55E',lc:'86EFAC'},
+      {lbl:'SIN SERVICIO',val:String(nSin),bg:'450A0A',vc:'EF4444',lc:'FCA5A5'},
+      {lbl:'INCIDENCIAS',val:String(incidencias.length),bg:'451A03',vc:'F59E0B',lc:'FCD34D'},
+    ];
+    for(let i=0;i<4;i++){
+      const k=kpis[i],x=0.12+i*2.27;
+      slide.addShape(pres.shapes.ROUNDED_RECTANGLE,{x,y:0.62,w:2.12,h:0.9,fill:{color:k.bg},line:{color:k.bg,pt:0},rectRadius:0.06});
+      slide.addText(k.val,{x,y:0.64,w:2.12,h:0.54,fontSize:28,bold:true,color:k.vc,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      slide.addText(k.lbl,{x,y:1.16,w:2.12,h:0.3,fontSize:8,color:k.lc,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+    }
+
+    // ── TABLA ─────────────────────────────────────
+    const TL=0.12,TW=9.1,tyTitle=1.62;
+    slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:tyTitle,w:TW,h:0.25,fill:{color:'FFFFFF'},line:{color:'FFFFFF',pt:0}});
+    slide.addText('▌ Incidencias activas — Escalamientos NOC: Rosario Mauricio',{x:TL,y:tyTitle,w:TW,h:0.25,fontSize:9,bold:true,color:'1B3A6B',fontFace:'Calibri',valign:'middle',margin:0});
+
+    const thY=tyTitle+0.28;
+    const cW=[2.12,0.56,0.52,TW-2.12-0.56-0.52];
+    const cN=['CAUSA','NODOS','DÍAS','TÍTULO / DETALLE'];
+    slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:thY,w:TW,h:0.3,fill:{color:'1B3A6B'},line:{color:'1B3A6B',pt:0}});
+    let cx2=TL;
+    for(let i=0;i<cN.length;i++){
+      slide.addText(cN[i],{x:cx2+0.05,y:thY+0.04,w:cW[i]-0.1,h:0.22,fontSize:8,bold:true,color:'FFFFFF',fontFace:'Calibri',align:i===0?'left':'center',valign:'middle',margin:0});
+      cx2+=cW[i];
+    }
+
+    const rowStart=thY+0.3,maxH=4.95,n=incidencias.length;
+    const rh=n>0?Math.min(0.68,Math.max(0.38,maxH/n)):0.5;
+    const szT=rh>=0.58?10:rh>=0.48?9:8;
+    const szD=rh>=0.58?8.5:rh>=0.48?8:7.5;
+    const szN=rh>=0.58?22:rh>=0.48?18:14;
+
+    for(let i=0;i<n;i++){
+      const inc=incidencias[i];
+      const[titulo,detalle]=construirTexto(inc);
+      const ry=rowStart+i*rh;
+      const bg=i%2===0?'F0F4F8':'FFFFFF';
+      const ch=CAUSA_CLR_HEX[inc.causa]||'6B7280';
+      slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:ry,w:TW,h:rh,fill:{color:bg},line:{color:'D1D5DB',pt:0.5}});
+      // Causa pill
+      slide.addShape(pres.shapes.ROUNDED_RECTANGLE,{x:TL+0.05,y:ry+rh*0.14,w:cW[0]-0.12,h:rh*0.72,fill:{color:ch+'20'},line:{color:ch,pt:1},rectRadius:0.04});
+      slide.addText(CAUSA_LABELS[inc.causa]||inc.causa,{x:TL+0.07,y:ry+rh*0.14,w:cW[0]-0.16,h:rh*0.72,fontSize:7.5,bold:true,color:ch,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      // Nodos
+      slide.addText(String(inc.count),{x:TL+cW[0]+0.02,y:ry,w:cW[1]-0.04,h:rh,fontSize:szN,bold:true,color:'1E293B',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      // Días
+      slide.addText(String(inc.root_days)+(inc.intermitencia?'⚠':''),{x:TL+cW[0]+cW[1]+0.02,y:ry,w:cW[2]-0.04,h:rh,fontSize:szN,bold:true,color:inc.intermitencia?'F59E0B':'1E293B',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      // Titulo+detalle
+      const xTD=TL+cW[0]+cW[1]+cW[2]+0.05,wTD=cW[3]-0.08;
+      slide.addText(titulo,{x:xTD,y:ry+0.04,w:wTD,h:rh*0.44,fontSize:szT,bold:true,color:'1E293B',fontFace:'Calibri',valign:'middle',margin:0});
+      if(rh>=0.46){
+        slide.addText(detalle,{x:xTD,y:ry+rh*0.5,w:wTD,h:rh*0.44,fontSize:szD,color:'64748B',fontFace:'Calibri',valign:'top',margin:0});
+      }
+    }
+
+    // ── DONUT CHART ───────────────────────────────
+    const ccnt={};for(const inc of incidencias)ccnt[inc.causa]=(ccnt[inc.causa]||0)+1;
+    const dOrden=['PRONATEL','ENERGETICO','RADIO','POR_DEFINIR','SOCIAL'].filter(c=>ccnt[c]);
+    if(dOrden.length>0){
+      slide.addChart(pres.charts.DOUGHNUT,[{
+        name:'Causas',
+        labels:dOrden.map(c=>CAUSA_LABELS[c]),
+        values:dOrden.map(c=>ccnt[c])
+      }],{
+        x:9.3,y:1.62,w:3.85,h:5.1,
+        chartColors:dOrden.map(c=>CAUSA_CLR_HEX[c]),
+        holeSize:55,
+        showLegend:true,legendPos:'b',
+        legendFontFace:'Calibri',legendFontSize:8,
+        chartArea:{fill:{color:'FFFFFF'}},
+        plotArea:{fill:{color:'FFFFFF'}},
+        showTitle:false,dataLabelFontSize:9
+      });
+    }
+
+    // ── FOOTER ────────────────────────────────────
+    slide.addShape(pres.shapes.RECTANGLE,{x:0,y:7.0,w:13.33,h:0.5,fill:{color:'1E3A5F'},line:{color:'1E3A5F',pt:0}});
+    const cnt2={};for(const inc of incidencias)cnt2[inc.causa]=(cnt2[inc.causa]||0)+1;
+    const pies=Object.entries(cnt2).sort((a,b)=>(CAUSA_ORDEN[a[0]]??9)-(CAUSA_ORDEN[b[0]]??9)).map(([c,n])=>`${n} ${CAUSA_LABELS[c]}`);
+    const ftxt=nSin>0?`${nSin} nodos sin servicio — ${pies.join(' | ')}.`:'Red operativa al 100%.';
+    slide.addText(ftxt,{x:0.18,y:7.04,w:12.95,h:0.42,fontSize:8,color:'BDD7EE',fontFace:'Calibri',valign:'middle',margin:0});
+
+    await pres.writeFile({fileName:`Estado_Red_Lambayeque_${fechaFn}.pptx`});
+    st.textContent='✅ PPT descargado';st.style.color='#22c55e';
+    setTimeout(()=>{st.textContent='';},3500);
+  }catch(err){
+    console.error(err);st.textContent='❌ '+err.message;st.style.color='#ef4444';
+  }finally{btnP.disabled=false;}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PANEL LATERAL DESPLEGABLE
+// ═══════════════════════════════════════════════════════════════════
+function getRootOf(code,fallen){
+  let cur=code;const vis=new Set();
+  while(cur&&!vis.has(cur)){
+    vis.add(cur);
+    const n=ACC[cur]||nodesGlobal[cur]||{};const ps=n.padres||[];
+    if(!ps.length)return cur;
+    const fp=ps.filter(p=>fallen.has(p));
+    if(fp.length===ps.length)cur=fp[0];else return cur;
+  }
+  return cur;
+}
+
+function actualizarPanelLateral(distCodes,fallen){
+  const lista=document.getElementById('lista');
+  if(!distCodes.length){
+    lista.innerHTML='<div style="color:#6b7280;font-size:11px;padding:8px 4px">Sin cortes activos — red operativa.</div>';
+    return;
+  }
+  const abiertos=new Set();
+  lista.querySelectorAll('.ci-bdy.open').forEach(el=>abiertos.add(el.id.replace('cb-','')));
+  // Contar intermedios/terminales por distrital raíz
+  const subCnt={};for(const c of distCodes)subCnt[c]={inter:0,term:0};
+  for(const code of fallen){
+    if(distCodes.includes(code))continue;
+    const n=ACC[code]||nodesGlobal[code]||{};
+    if(n.tipo!=='INTERMEDIO'&&n.tipo!=='TERMINAL')continue;
+    const root=getRootOf(code,fallen);
+    if(subCnt[root]){if(n.tipo==='INTERMEDIO')subCnt[root].inter++;else subCnt[root].term++;}
+  }
+  function getCausa(code){
+    const ovr=(overrides_global.causas||{})[code];if(ovr)return{causa:ovr.causa,manual:true};
+    const soc=(overrides_global.sociales||{})[code];if(soc)return{causa:'SOCIAL',manual:true};
+    if(resultados_global){const inc=resultados_global.incidencias.find(i=>i.root===code);if(inc)return{causa:inc.causa,manual:false};}
+    return{causa:'POR_DEFINIR',manual:false};
+  }
+  function esAuto(code){
+    if(!ntd_rev||!ntd_rev[code])return false;
+    const ntId=ntd_rev[code];
+    return[...cortados_auto].some(k=>k.startsWith(ntId+'|')||k.endsWith('|'+ntId));
+  }
+  const sorted=distCodes.slice().sort((a,b)=>(ACC[a]?.rol||'').localeCompare(ACC[b]?.rol||''));
+  lista.innerHTML=sorted.map(code=>{
+    const n=ACC[code]||{};
+    const{causa,manual}=getCausa(code);
+    const clr=CAUSA_CLR[causa]||'#6b7280';
+    const lbl=CAUSA_LABELS[causa]||causa;
+    const sc2=subCnt[code]||{inter:0,term:0};
+    const open=abiertos.has(code);
+    const nombre=(n.nombre||code).replace(/_/g,' ');
+    const detHtml=`<div class="ci-sub">
+      ${sc2.inter>0?`<span>📡 ${sc2.inter} interm.</span>`:''}
+      ${sc2.term>0?`<span>📶 ${sc2.term} term.</span>`:''}
+      ${sc2.inter===0&&sc2.term===0?`<span style="color:#4b5563">Solo nodo distrital</span>`:''}
+      ${manual?`<span style="color:#f59e0b;font-size:9px">✏️ editado</span>`:''}
+    </div>`;
+    return`<div class="ci"><div class="ci-hdr" onclick="toggleCi('${code}')">
+      <span class="ci-arr" id="ct-${code}">${open?'▼':'►'}</span>
+      <span class="ro">${n.rol||'?'}</span>
+      <div style="flex:1;min-width:0"><div class="no">${nombre}</div><div class="re">${n.red||''}</div></div>
+      ${!esAuto(code)?'<span class="ci-man">manual</span>':''}
+      <span class="tag" style="background:${clr}22;color:${clr};border:1px solid ${clr}44;font-size:8px;padding:1px 5px;flex-shrink:0">${lbl}</span>
+    </div><div class="ci-bdy${open?' open':''}" id="cb-${code}">${detHtml}</div></div>`;
+  }).join('');
+}
+
+function toggleCi(code){
+  const body=document.getElementById('cb-'+code),arr=document.getElementById('ct-'+code);
+  if(!body)return;
+  const isOpen=body.classList.contains('open');
+  body.classList.toggle('open',!isOpen);
+  if(arr)arr.textContent=isOpen?'►':'▼';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  OVERRIDES — carga / guardado / limpieza diaria
+// ═══════════════════════════════════════════════════════════════════
+async function cargarOverrides(){
+  try{
+    const r=await prx('get','overrides');
+    if(r.ok&&r.data){
+      const bin=atob(r.data.replace(/\s/g,''));
+      const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      const txt=new TextDecoder().decode(bytes);
+      const obj=JSON.parse(txt);
+      overrides_global={causas:obj.causas||{},sociales:obj.sociales||{},last_reset:obj.last_reset||''};
+    }
+  }catch{overrides_global={causas:{},sociales:{},last_reset:''};}
+  // Limpieza diaria: si hoy es un día nuevo → borra causas (NO sociales)
+  const hoy=HOY();
+  if(overrides_global.last_reset!==hoy){
+    const nBorradas=Object.keys(overrides_global.causas||{}).length;
+    overrides_global.causas={};overrides_global.last_reset=hoy;
+    if(nBorradas>0)await guardarOverridesRemoto();
+  }
+  renderPanelSocial();
+}
+
+async function guardarOverridesRemoto(){
+  try{
+    const json=JSON.stringify(overrides_global);
+    const b64=btoa(unescape(encodeURIComponent(json)));
+    const r=await prx('setOverrides','',b64);
+    if(!r.ok)console.warn('Error guardando overrides:',r.error);
+  }catch(e){console.warn('Override save failed:',e.message);}
+}
+
+// ── Modal edición causa ─────────────────────────────────
+function abrirEditCausa(root){
+  modal_current_root=root;
+  const n=nodesGlobal[root]||ACC[root]||{};
+  document.getElementById('modal-titulo').textContent=(n.name||n.nombre||root).replace(/_/g,' ');
+  const ovr=(overrides_global.causas||{})[root]||{};
+  const causaActual=ovr.causa||(resultados_global?.incidencias.find(i=>i.root===root)?.causa)||'POR_DEFINIR';
+  document.getElementById('modal-nota').value=ovr.nota||'';
+  const causas=[
+    {k:'PRONATEL',d:'Transporte PRONATEL'},{k:'ENERGETICO',d:'Factor Energético'},
+    {k:'RADIO',d:'Factor Radio'},{k:'POR_DEFINIR',d:'Por definir'},{k:'SOCIAL',d:'Causa social'}
+  ];
+  document.getElementById('modal-radios').innerHTML=causas.map(c=>`
+    <div class="mo-row${causaActual===c.k?' sel':''}" onclick="selectCausa('${c.k}',this)">
+      <input type="radio" name="mo_causa" value="${c.k}"${causaActual===c.k?' checked':''}> 
+      <span class="mo-lbl" style="color:${CAUSA_CLR[c.k]||'#6b7280'}">${c.d}</span>
+    </div>`).join('');
+  document.getElementById('modal-ovr').classList.add('open');
+}
+
+function selectCausa(k,el){
+  document.querySelectorAll('.mo-row').forEach(r=>r.classList.remove('sel'));
+  el.classList.add('sel');el.querySelector('input').checked=true;
+}
+function cerrarModal(){document.getElementById('modal-ovr').classList.remove('open');modal_current_root=null;}
+
+async function guardarOverride(){
+  if(!modal_current_root)return;
+  const sel=document.querySelector('input[name="mo_causa"]:checked');
+  if(!sel){alert('Selecciona una causa.');return;}
+  const nota=document.getElementById('modal-nota').value.trim();
+  overrides_global.causas[modal_current_root]={causa:sel.value,nota,ts:new Date().toISOString()};
+  overrides_global.last_reset=HOY();
+  cerrarModal();
+  await guardarOverridesRemoto();
+  flash('✅ Causa actualizada para '+modal_current_root,'ok');
+  if(resultados_global)actualizarDashboard(resultados_global);
+  updateStats();
+}
+
+// ── Panel gestión social ─────────────────────────────────
+function renderPanelSocial(){
+  const soc=overrides_global.sociales||{};
+  const lista=document.getElementById('soc-lista');if(!lista)return;
+  const items=Object.entries(soc);
+  if(!items.length){lista.innerHTML='<div style="color:#6b7280;font-size:10px">Sin nodos sociales activos.</div>';return;}
+  lista.innerHTML=items.map(([code,info])=>{
+    const n=nodesGlobal[code]||ACC[code]||{};
+    const nombre=(n.name||n.nombre||code).replace(/_/g,' ');
+    return`<div class="soc-item"><span class="soc-code">${code}</span><span class="soc-name">${nombre}</span><button class="soc-rm" onclick="levantarSocial('${code}')">Levantar</button></div>`;
+  }).join('');
+}
+
+function mostrarFormSocial(){document.getElementById('soc-form').style.display='block';document.getElementById('soc-codigo').focus();}
+function ocultarFormSocial(){document.getElementById('soc-form').style.display='none';}
+
+async function agregarSocial(){
+  const cod=document.getElementById('soc-codigo').value.trim().toUpperCase();
+  const mot=document.getElementById('soc-motivo').value.trim();
+  if(!/^LA\d{5}$/.test(cod)){alert('Código inválido. Usa formato LA##### (ej: LA00692)');return;}
+  if(!mot){alert('El motivo es obligatorio.');return;}
+  if(!overrides_global.sociales)overrides_global.sociales={};
+  overrides_global.sociales[cod]={motivo:mot,ts:new Date().toISOString()};
+  ocultarFormSocial();
+  await guardarOverridesRemoto();
+  renderPanelSocial();
+  flash(`✅ ${cod} marcado como SOCIAL`,'ok');
+  if(resultados_global)actualizarDashboard(resultados_global);
+}
+
+async function levantarSocial(code){
+  if(!confirm(`¿Levantar condición social de ${code}?`))return;
+  delete overrides_global.sociales[code];
+  await guardarOverridesRemoto();
+  renderPanelSocial();
+  flash(`✅ Condición social de ${code} levantada`,'ok');
+  if(resultados_global)actualizarDashboard(resultados_global);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  INICIO
+// ═══════════════════════════════════════════════════════════════════
+resize();fitView();updateStats();draw();
+cargarTodo();   // carga automática al abrir la página
+</script>
 </body>
 </html>
