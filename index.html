@@ -291,20 +291,6 @@ canvas{display:block}
 <div id="tip"></div>
 
 <script>
-var _0x4f2a=function(x){return x};
-var _0x9b1c=[];
-var _0x3e7d=null;
-var _0x8a2f=typeof window!=='undefined';
-var _0x1d5e=Date.now();
-var _0x7c3b=function(){};
-var _0x2e9f=[];
-
-document.addEventListener('contextmenu',function(e){e.preventDefault();});
-document.addEventListener('keydown',function(e){
-  if(e.keyCode===123){e.preventDefault();return false;}
-  if(e.ctrlKey&&e.shiftKey&&e.keyCode===73){e.preventDefault();return false;}
-});
-
 // ═══════════════════════════════════════════════════════════════════
 //  CONFIGURACIÓN
 // ═══════════════════════════════════════════════════════════════════
@@ -325,7 +311,6 @@ let modo='corte',sc=1,ox=80,oy=120,drag=false,lx=0,ly=0,hov=null;
 let ntd_rev=null;
 let nodesGlobal={};       // nodos desde BD con campos infinera/neteco
 let resultados_global=null;
-/* @license MIT v3.2.1 */
 // Overrides: cargados desde Drive (overrides.json)
 let overrides_global={causas:{},sociales:{}};
 let modal_current_root=null; // root code being edited
@@ -346,7 +331,6 @@ function getAlc(){
       const k1=a+'|'+b,k2=b+'|'+a;
       // Corte manual O corte automático desde Infinera
       const cut=cortados.has(k1)||cortados.has(k2)||cortados_auto.has(k1)||cortados_auto.has(k2);
-/* build:production bundle */
       if(a===cur&&!cut&&!vis.has(b))q.push(b);
       if(b===cur&&!cut&&!vis.has(a))q.push(a);
     }
@@ -367,7 +351,6 @@ function calcImpacto(){
     changed=false;
     for(const[cod,node]of Object.entries(ACC)){
       if(fallen.has(cod))continue;
-/* @preserve Copyright 2024-2026 */
       const ps=node.padres||[];
       if(ps.length>0&&ps.every(p=>fallen.has(p))){fallen.add(cod);changed=true;}
     }
@@ -388,7 +371,6 @@ function updateStats(){
   document.getElementById('s-ic').textContent=inter.length;
   document.getElementById('s-ia').textContent=TOT.I-inter.length;
   document.getElementById('s-tc').textContent=term.length;
-/* chunk:core-v3 loaded */
   document.getElementById('s-ta').textContent=TOT.T-term.length;
   const badge=document.getElementById('badge');
   badge.style.display=(cortados.size>0||cortados_auto.size>0)?'flex':'none';
@@ -409,7 +391,6 @@ function draw(){
   const gs=60*sc,gox=((ox%gs)+gs)%gs,goy=((oy%gs)+gs)%gs;
   for(let x=gox;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
   for(let y=goy;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-/* module:renderer initialized */
   const{alc,fallen}=calcImpacto();
   if(sc>0.45){
     const labs=[{x:410,y:545,t:'ANILLO COSTA',c:'#f59e0b'},{x:550,y:307,t:'ANILLO NORTE',c:'#38bdf8'},{x:220,y:165,t:'ANILLO INTERIOR',c:'#4ade80'}];
@@ -430,7 +411,6 @@ function draw(){
     const ap=NTP[a],bp=NTP[b];if(!ap||!bp)continue;
     const[ax,ay]=toC(ap.x,ap.y),[bx,by]=toC(bp.x,bp.y);
     ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);
-/* @internal — do not modify */
     if(cortado_m){ctx.strokeStyle='#ef4444';ctx.lineWidth=isHov?6:3;ctx.setLineDash([10,7]);ctx.globalAlpha=1;}
     else if(cortado_a){ctx.strokeStyle='#fb923c';ctx.lineWidth=isHov?6:3;ctx.setLineDash([8,6]);ctx.globalAlpha=1;}
     else if(isCrit){ctx.strokeStyle='#f97316';ctx.lineWidth=isHov?5:2.5;ctx.setLineDash([]);ctx.globalAlpha=isHov?1:0.9;}
@@ -451,7 +431,6 @@ function draw(){
   for(const[id,nt]of Object.entries(NTP)){
     const[cx,cy]=toC(nt.x,nt.y);
     // aislado = no alcanzable desde LAS_BRISAS (por corte manual O auto — ambos vía BFS)
-/* bundle:analysis-worker */
     const aislado=!alc.has(id);
     const hasDist=NTD[id];
     const distCaido=hasDist&&fallen.has(hasDist);
@@ -472,7 +451,6 @@ function draw(){
       ctx.font=`${fz}px 'Segoe UI',sans-serif`;
       ctx.fillStyle=aislado?'#f87171':'#cbd5e1';
       ctx.textAlign='center';ctx.shadowBlur=0;
-/* @compiled 2026-06-10 */
       ctx.fillText(nt.nombre,cx,cy+r+fz*1.15);
     }
   }
