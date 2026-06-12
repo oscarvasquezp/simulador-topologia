@@ -991,98 +991,140 @@ async function generarPPT(){
     const{incidencias,sin_servicio}=resultados_global;
     const nSin=sin_servicio.size,nCon=TOT.total-nSin;
     const now=new Date();
-    const fecha=`${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()}`;
-    const fechaFn=fecha.replace(/\//g,'-');
+    const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const fechaLarga=`${now.getDate()} de ${meses[now.getMonth()]} de ${now.getFullYear()}`;
+    const fechaFn=`${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
 
-    // ── HEADER ────────────────────────────────────
-    slide.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:13.33,h:0.55,fill:{color:'1B3A6B'},line:{color:'1B3A6B',pt:0}});
-    slide.addText('ESTADO RED DE ACCESO — LAMBAYEQUE',{x:0.14,y:0.07,w:8.5,h:0.42,fontSize:14,bold:true,color:'FFFFFF',fontFace:'Calibri',valign:'middle',margin:0});
-    slide.addText(fecha,{x:9.3,y:0.07,w:3.9,h:0.22,fontSize:11,color:'BDD7EE',fontFace:'Calibri',align:'right',valign:'middle',margin:0});
-    slide.addText('Elaborado: Operación y Mantenimiento Lambayeque',{x:0.14,y:0.32,w:9,h:0.18,fontSize:7.5,color:'90AACB',fontFace:'Calibri',valign:'middle',margin:0});
+    // ── HEADER ──────────────────────────────────────────
+    slide.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:13.33,h:0.88,fill:{color:'1B3A6B'},line:{color:'1B3A6B',pt:0}});
+    slide.addText('Estado de la Red de Acceso \u2014 Lambayeque',{x:0.18,y:0.08,w:9.5,h:0.42,fontSize:18,bold:true,color:'FFFFFF',fontFace:'Calibri',valign:'middle',margin:0});
+    slide.addText(fechaLarga,{x:9.8,y:0.08,w:3.35,h:0.32,fontSize:11,color:'BDD7EE',fontFace:'Calibri',align:'right',valign:'middle',margin:0});
+    slide.addText('Operaci\u00f3n y Mantenimiento',{x:0.18,y:0.52,w:8,h:0.28,fontSize:9,color:'90AACB',fontFace:'Calibri',valign:'middle',margin:0});
 
-    // ── KPI CARDS ─────────────────────────────────
+    // ── KPI CARDS ────────────────────────────────────────
+    // White bg, thin colored border, colored label, large number, small desc
+    const pct=(v,t)=>Math.round(v/t*100);
     const kpis=[
-      {lbl:'TOTAL NODOS',val:String(TOT.total),bg:'1E3A5F',vc:'FFFFFF',lc:'90AACB'},
-      {lbl:'CON SERVICIO',val:String(nCon),bg:'14532D',vc:'22C55E',lc:'86EFAC'},
-      {lbl:'SIN SERVICIO',val:String(nSin),bg:'450A0A',vc:'EF4444',lc:'FCA5A5'},
-      {lbl:'INCIDENCIAS',val:String(incidencias.length),bg:'451A03',vc:'F59E0B',lc:'FCD34D'},
+      {lbl:'TOTAL DE NODOS',val:String(TOT.total),desc:'Red de acceso PRONATEL',bc:'1B3A6B',vc:'1B3A6B',nc:'1B3A6B'},
+      {lbl:'CON SERVICIO',val:String(nCon),desc:pct(nCon,TOT.total)+'% del total',bc:'16A34A',vc:'16A34A',nc:'16A34A'},
+      {lbl:'SIN SERVICIO',val:String(nSin),desc:pct(nSin,TOT.total)+'% del total',bc:'DC2626',vc:'DC2626',nc:'DC2626'},
+      {lbl:'INCIDENCIAS ACTIVAS',val:String(incidencias.length),desc:'Reportadas al cierre',bc:'D97706',vc:'D97706',nc:'D97706'},
     ];
+    const cw2=3.15,cg=0.12,cy2=0.97,ch2=1.2;
     for(let i=0;i<4;i++){
-      const k=kpis[i],x=0.12+i*2.27;
-      slide.addShape(pres.shapes.ROUNDED_RECTANGLE,{x,y:0.62,w:2.12,h:0.9,fill:{color:k.bg},line:{color:k.bg,pt:0},rectRadius:0.06});
-      slide.addText(k.val,{x,y:0.64,w:2.12,h:0.54,fontSize:28,bold:true,color:k.vc,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
-      slide.addText(k.lbl,{x,y:1.16,w:2.12,h:0.3,fontSize:8,color:k.lc,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      const k=kpis[i],cx2=0.18+i*(cw2+cg);
+      // Card background
+      slide.addShape(pres.shapes.RECTANGLE,{x:cx2,y:cy2,w:cw2,h:ch2,fill:{color:'FFFFFF'},line:{color:k.bc,pt:1.5}});
+      // Label (small, colored, bold)
+      slide.addText(k.lbl,{x:cx2+0.1,y:cy2+0.1,w:cw2-0.2,h:0.22,fontSize:8,bold:true,color:k.vc,fontFace:'Calibri',valign:'top',margin:0});
+      // Large number
+      slide.addText(k.val,{x:cx2+0.1,y:cy2+0.3,w:cw2-0.2,h:0.62,fontSize:36,bold:true,color:k.nc,fontFace:'Calibri',valign:'middle',margin:0});
+      // Description (small grey)
+      slide.addText(k.desc,{x:cx2+0.1,y:cy2+0.96,w:cw2-0.2,h:0.2,fontSize:8,color:'6B7280',fontFace:'Calibri',valign:'middle',margin:0});
     }
 
-    // ── TABLA ─────────────────────────────────────
-    const TL=0.12,TW=9.1,tyTitle=1.62;
-    slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:tyTitle,w:TW,h:0.25,fill:{color:'FFFFFF'},line:{color:'FFFFFF',pt:0}});
-    slide.addText('▌ Incidencias activas — Escalamientos NOC: Rosario Mauricio',{x:TL,y:tyTitle,w:TW,h:0.25,fontSize:9,bold:true,color:'1B3A6B',fontFace:'Calibri',valign:'middle',margin:0});
+    // ── SECTION TITLES ────────────────────────────────────
+    const TL=0.18,TW=9.4,secY=2.3;
+    slide.addText('Incidencias activas',{x:TL,y:secY,w:TW,h:0.28,fontSize:13,bold:true,color:'1E293B',fontFace:'Calibri',valign:'middle',margin:0});
+    slide.addText('Nodo ra\u00edz de cada incidencia con total de nodos impactados en cascada \u00b7 Escalamientos vigentes \u2014 NOC (Rosario Mauricio).',{x:TL,y:secY+0.28,w:TW,h:0.2,fontSize:7.5,color:'6B7280',fontFace:'Calibri',valign:'middle',margin:0});
 
-    const thY=tyTitle+0.28;
-    const cW=[2.12,0.56,0.52,TW-2.12-0.56-0.52];
-    const cN=['CAUSA','NODOS','DÍAS','TÍTULO / DETALLE'];
-    slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:thY,w:TW,h:0.3,fill:{color:'1B3A6B'},line:{color:'1B3A6B',pt:0}});
-    let cx2=TL;
-    for(let i=0;i<cN.length;i++){
-      slide.addText(cN[i],{x:cx2+0.05,y:thY+0.04,w:cW[i]-0.1,h:0.22,fontSize:8,bold:true,color:'FFFFFF',fontFace:'Calibri',align:i===0?'left':'center',valign:'middle',margin:0});
-      cx2+=cW[i];
+    // ── TABLE HEADER ──────────────────────────────────────
+    const thY2=secY+0.52;
+    const cols=[
+      {lbl:'#',w:0.32,align:'center'},
+      {lbl:'Nodo ra\u00edz / Red afectada (nodos impactados en cascada)',w:5.3,align:'left'},
+      {lbl:'Nodos\ntotales',w:0.82,align:'center'},
+      {lbl:'D\u00edas',w:0.72,align:'center'},
+      {lbl:'Causa ra\u00edz',w:2.24,align:'center'},
+    ];
+    slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:thY2,w:TW,h:0.38,fill:{color:'1B3A6B'},line:{color:'1B3A6B',pt:0}});
+    let cxc=TL;
+    for(const col of cols){
+      slide.addText(col.lbl,{x:cxc+0.05,y:thY2+0.03,w:col.w-0.1,h:0.32,fontSize:8,bold:true,color:'FFFFFF',fontFace:'Calibri',align:col.align,valign:'middle',margin:0});
+      cxc+=col.w;
     }
 
-    const rowStart=thY+0.3,maxH=4.95,n=incidencias.length;
-    const rh=n>0?Math.min(0.68,Math.max(0.38,maxH/n)):0.5;
-    const szT=rh>=0.58?10:rh>=0.48?9:8;
-    const szD=rh>=0.58?8.5:rh>=0.48?8:7.5;
-    const szN=rh>=0.58?22:rh>=0.48?18:14;
+    // ── TABLE ROWS ────────────────────────────────────────
+    const n=incidencias.length,rowStart=thY2+0.38;
+    const maxH2=7.0-rowStart-0.02;
+    const rh2=n>0?Math.min(0.7,Math.max(0.38,maxH2/n)):0.5;
+    const szT2=rh2>=0.55?10:9,szD2=rh2>=0.55?8.5:8;
 
     for(let i=0;i<n;i++){
       const inc=incidencias[i];
       const[titulo,detalle]=construirTexto(inc);
-      const ry=rowStart+i*rh;
-      const bg=i%2===0?'F0F4F8':'FFFFFF';
-      const ch=CAUSA_CLR_HEX[inc.causa]||'6B7280';
-      slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:ry,w:TW,h:rh,fill:{color:bg},line:{color:'D1D5DB',pt:0.5}});
-      // Causa pill
-      slide.addShape(pres.shapes.ROUNDED_RECTANGLE,{x:TL+0.05,y:ry+rh*0.14,w:cW[0]-0.12,h:rh*0.72,fill:{color:ch+'20'},line:{color:ch,pt:1},rectRadius:0.04});
-      slide.addText(CAUSA_LABELS[inc.causa]||inc.causa,{x:TL+0.07,y:ry+rh*0.14,w:cW[0]-0.16,h:rh*0.72,fontSize:7.5,bold:true,color:ch,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
-      // Nodos
-      slide.addText(String(inc.count),{x:TL+cW[0]+0.02,y:ry,w:cW[1]-0.04,h:rh,fontSize:szN,bold:true,color:'1E293B',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      const ry2=rowStart+i*rh2;
+      const bg2=i%2===0?'F8FAFC':'FFFFFF';
+      const ch2b=CAUSA_CLR_HEX[inc.causa]||'6B7280';
+      slide.addShape(pres.shapes.RECTANGLE,{x:TL,y:ry2,w:TW,h:rh2,fill:{color:bg2},line:{color:'E2E8F0',pt:0.5}});
+      let cxr=TL;
+      // # number
+      slide.addText(String(i+1),{x:cxr+0.04,y:ry2,w:cols[0].w-0.08,h:rh2,fontSize:9,color:'6B7280',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      cxr+=cols[0].w;
+      // Title + detail
+      slide.addText(titulo,{x:cxr+0.05,y:ry2+0.04,w:cols[1].w-0.1,h:rh2*0.48,fontSize:szT2,bold:true,color:'1E293B',fontFace:'Calibri',valign:'middle',margin:0});
+      if(rh2>=0.46)slide.addText(detalle,{x:cxr+0.05,y:ry2+rh2*0.52,w:cols[1].w-0.1,h:rh2*0.42,fontSize:szD2,color:'64748B',fontFace:'Calibri',valign:'top',margin:0});
+      cxr+=cols[1].w;
+      // Nodos totales (colored)
+      slide.addText(String(inc.count),{x:cxr,y:ry2,w:cols[2].w,h:rh2,fontSize:rh2>=0.55?22:18,bold:true,color:ch2b,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      cxr+=cols[2].w;
       // Días
-      slide.addText(String(inc.root_days)+(inc.intermitencia?'⚠':''),{x:TL+cW[0]+cW[1]+0.02,y:ry,w:cW[2]-0.04,h:rh,fontSize:szN,bold:true,color:inc.intermitencia?'F59E0B':'1E293B',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
-      // Titulo+detalle
-      const xTD=TL+cW[0]+cW[1]+cW[2]+0.05,wTD=cW[3]-0.08;
-      slide.addText(titulo,{x:xTD,y:ry+0.04,w:wTD,h:rh*0.44,fontSize:szT,bold:true,color:'1E293B',fontFace:'Calibri',valign:'middle',margin:0});
-      if(rh>=0.46){
-        slide.addText(detalle,{x:xTD,y:ry+rh*0.5,w:wTD,h:rh*0.44,fontSize:szD,color:'64748B',fontFace:'Calibri',valign:'top',margin:0});
-      }
+      const dayClr=inc.intermitencia?'F59E0B':'1E293B';
+      slide.addText(String(inc.root_days),{x:cxr,y:ry2,w:cols[3].w,h:rh2,fontSize:rh2>=0.55?22:18,bold:true,color:dayClr,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      cxr+=cols[3].w;
+      // Causa raíz (colored text, bold)
+      slide.addText(CAUSA_LABELS[inc.causa]||inc.causa,{x:cxr+0.05,y:ry2,w:cols[4].w-0.1,h:rh2,fontSize:szT2,bold:true,color:ch2b,fontFace:'Calibri',align:'center',valign:'middle',margin:0});
     }
 
-    // ── DONUT CHART ───────────────────────────────
-    const ccnt={};for(const inc of incidencias)ccnt[inc.causa]=(ccnt[inc.causa]||0)+1;
-    const dOrden=['PRONATEL','ENERGETICO','RADIO','POR_DEFINIR','SOCIAL'].filter(c=>ccnt[c]);
+    // ── CAUSA RAÍZ SECTION (derecha) ──────────────────────
+    const rx=9.78,rw=3.37;
+    slide.addText('Causa ra\u00edz',{x:rx,y:secY,w:rw,h:0.28,fontSize:13,bold:true,color:'1E293B',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+    slide.addText('Distribuci\u00f3n: '+nSin+' nodos sin servicio',{x:rx,y:secY+0.28,w:rw,h:0.2,fontSize:8,color:'6B7280',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+
+    // Donut chart — values by NODE count (inc.count), not incidencias count
+    const cnodos={};for(const inc of incidencias)cnodos[inc.causa]=(cnodos[inc.causa]||0)+inc.count;
+    const dOrden=['PRONATEL','ENERGETICO','RADIO','POR_DEFINIR','SOCIAL'].filter(c=>cnodos[c]);
+    const totalN=Object.values(cnodos).reduce((a,b)=>a+b,0);
     if(dOrden.length>0){
       slide.addChart(pres.charts.DOUGHNUT,[{
-        name:'Causas',
+        name:'Nodos',
         labels:dOrden.map(c=>CAUSA_LABELS[c]),
-        values:dOrden.map(c=>ccnt[c])
+        values:dOrden.map(c=>cnodos[c])
       }],{
-        x:9.3,y:1.62,w:3.85,h:5.1,
+        x:rx,y:thY2,w:rw,h:2.6,
         chartColors:dOrden.map(c=>CAUSA_CLR_HEX[c]),
         holeSize:55,
-        showLegend:true,legendPos:'b',
-        legendFontFace:'Calibri',legendFontSize:8,
+        showLegend:false,
         chartArea:{fill:{color:'FFFFFF'}},
         plotArea:{fill:{color:'FFFFFF'}},
-        showTitle:false,dataLabelFontSize:9
+        showTitle:false,
+        dataLabelFontSize:8,
+        dataLabelColor:'FFFFFF',
+        showValue:false,showPercent:false
       });
+      // Center text overlay (nodos count)
+      slide.addText(String(totalN),{x:rx+0.9,y:thY2+0.8,w:rw-1.8,h:0.55,fontSize:24,bold:true,color:'1E293B',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+      slide.addText('nodos',{x:rx+0.9,y:thY2+1.35,w:rw-1.8,h:0.25,fontSize:9,color:'6B7280',fontFace:'Calibri',align:'center',valign:'middle',margin:0});
+    }
+    // Legend manual (below donut)
+    let legY=thY2+2.7;
+    for(const causa of dOrden){
+      const clrH=CAUSA_CLR_HEX[causa];
+      const pct2=Math.round(cnodos[causa]/totalN*100);
+      slide.addShape(pres.shapes.RECTANGLE,{x:rx+0.1,y:legY+0.04,w:0.18,h:0.18,fill:{color:clrH},line:{color:clrH,pt:0}});
+      slide.addText(CAUSA_LABELS[causa],{x:rx+0.34,y:legY,w:rw-0.44,h:0.27,fontSize:9,bold:true,color:clrH,fontFace:'Calibri',valign:'middle',margin:0});
+      slide.addText(cnodos[causa]+' nodos ('+pct2+'%)',{x:rx+0.34,y:legY+0.24,w:rw-0.44,h:0.22,fontSize:8,color:'6B7280',fontFace:'Calibri',valign:'middle',margin:0});
+      legY+=0.5;
     }
 
-    // ── FOOTER ────────────────────────────────────
+    // ── FOOTER ────────────────────────────────────────────
     slide.addShape(pres.shapes.RECTANGLE,{x:0,y:7.0,w:13.33,h:0.5,fill:{color:'1E3A5F'},line:{color:'1E3A5F',pt:0}});
-    const cnt2={};for(const inc of incidencias)cnt2[inc.causa]=(cnt2[inc.causa]||0)+1;
-    const pies=Object.entries(cnt2).sort((a,b)=>(CAUSA_ORDEN[a[0]]??9)-(CAUSA_ORDEN[b[0]]??9)).map(([c,n])=>`${n} ${CAUSA_LABELS[c]}`);
-    const ftxt=nSin>0?`${nSin} nodos sin servicio — ${pies.join(' | ')}.`:'Red operativa al 100%.';
-    slide.addText(ftxt,{x:0.18,y:7.04,w:12.95,h:0.42,fontSize:8,color:'BDD7EE',fontFace:'Calibri',valign:'middle',margin:0});
+    slide.addText('Resumen Estado',{x:0.18,y:7.02,w:2.5,h:0.22,fontSize:8,bold:true,color:'FFFFFF',fontFace:'Calibri',valign:'middle',margin:0});
+    const partes2=dOrden.map(c=>`${cnodos[c]} nodo${cnodos[c]!==1?'s':''} por ${CAUSA_LABELS[c]} (${Math.round(cnodos[c]/totalN*100)}%)`);
+    const intermit=incidencias.filter(i=>i.intermitencia).map(i=>`${(nodesGlobal[i.root]||ACC[i.root]||{}).name||i.root} (${i.root_days}d ra\u00edz \u00b7 ${i.max_days}d hijos)`);
+    let ftxt2=`De los nodos sin servicio: ${partes2.join(' | ')}.`;
+    if(intermit.length)ftxt2+=` \u26a0 Intermitencia: ${intermit.join(', ')}.`;
+    slide.addText(ftxt2,{x:0.18,y:7.22,w:12.95,h:0.25,fontSize:7.5,color:'BDD7EE',fontFace:'Calibri',valign:'middle',margin:0});
 
     await pres.writeFile({fileName:`Estado_Red_Lambayeque_${fechaFn}.pptx`});
     st.textContent='✅ PPT descargado';st.style.color='#22c55e';
