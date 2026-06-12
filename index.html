@@ -836,7 +836,7 @@ function actualizarDashboard({incidencias,sin_servicio}){
       const editTitle=hasOvr?'Override activo — clic para editar':'Editar causa raíz';
       return`<tr>
         <td class="tc" style="color:#6b7280">${i+1}</td>
-        <td><span class="tag" style="background:${clr}22;color:${clr};border:1px solid ${clr}55">${lbl}</span>${hasOvr?'<span style="color:#f59e0b;font-size:9px;margin-left:4px">✏️</span>':''}</td>
+        <td style="text-align:center"><span class="tag" style="background:${clr}22;color:${clr};border:1px solid ${clr}55">${lbl}</span>${hasOvr?'<span style="color:#f59e0b;font-size:9px;margin-left:4px">✏️</span>':''}</td>
         <td class="tbold">${titulo}</td>
         <td class="tc tbold">${inc.count}</td>
         <td class="tc tbold">${dm}</td>
