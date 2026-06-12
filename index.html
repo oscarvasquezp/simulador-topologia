@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>Estado Red Acceso — Lambayeque v6</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/libs/pptxgen.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow:hidden;height:100vh}
@@ -360,10 +360,15 @@ function calcImpacto(){
 }
 
 function updateStats(){
-  const{fallen}=calcImpacto();
-  const dist=[...fallen].filter(c=>ACC[c]?.tipo==='DISTRITAL');
-  const inter=[...fallen].filter(c=>ACC[c]?.tipo==='INTERMEDIO');
-  const term=[...fallen].filter(c=>ACC[c]?.tipo==='TERMINAL');
+  const{fallen:fallenBFS}=calcImpacto();
+  // Combinar BFS (transporte) con análisis Infinera (nodos aislados sin corte de transporte)
+  const fallen=new Set(fallenBFS);
+  if(resultados_global&&resultados_global.sin_servicio){
+    for(const c of resultados_global.sin_servicio)fallen.add(c);
+  }
+  const dist=[...fallen].filter(c=>(ACC[c]||nodesGlobal[c])?.tipo==='DISTRITAL');
+  const inter=[...fallen].filter(c=>(ACC[c]||nodesGlobal[c])?.tipo==='INTERMEDIO');
+  const term=[...fallen].filter(c=>(ACC[c]||nodesGlobal[c])?.tipo==='TERMINAL');
   const tot=fallen.size;
   document.getElementById('s-ct').textContent=tot;
   document.getElementById('s-at').textContent=TOT.total-tot;
@@ -558,8 +563,8 @@ function switchTab(id){
 // ═══════════════════════════════════════════════════════════════════
 const CAUSA_ORDEN={PRONATEL:0,ENERGETICO:1,RADIO:2,POR_DEFINIR:3,SOCIAL:4};
 const CAUSA_LABELS={PRONATEL:'Transporte PRONATEL',ENERGETICO:'Factor Energético',RADIO:'Factor Radio',POR_DEFINIR:'Por definir',SOCIAL:'Causa social'};
-const CAUSA_CLR={'PRONATEL':'#B91C1C','ENERGETICO':'#B45309','RADIO':'#1D4ED8','POR_DEFINIR':'#6B21A8','SOCIAL':'#C2410C'};
-const CAUSA_CLR_HEX={'PRONATEL':'B91C1C','ENERGETICO':'B45309','RADIO':'1D4ED8','POR_DEFINIR':'6B21A8','SOCIAL':'C2410C'};
+const CAUSA_CLR={'PRONATEL':'#B91C1C','ENERGETICO':'#D97706','RADIO':'#2563EB','POR_DEFINIR':'#7C3AED','SOCIAL':'#0891B2'};
+const CAUSA_CLR_HEX={'PRONATEL':'B91C1C','ENERGETICO':'D97706','RADIO':'2563EB','POR_DEFINIR':'7C3AED','SOCIAL':'0891B2'};
 const NETECO_COMM=new Set(['Communication Between NMS And NE Is Abnormal','AC Failure/Communication Between NMS And NE Is Abnormal']);
 const NETECO_ENERGY=new Set(['AC Failure','Mains Failure','BLVD Low Voltage Disconnected','LLVD Low Voltage Disconnected']);
 const SOCIAL_OVR=new Set(['LA00692']);
@@ -1088,27 +1093,50 @@ function getRootOf(code,fallen){
   return cur;
 }
 
+function getDistritaLAncestor(code){
+  const vis=new Set();let cur=code;
+  while(cur&&!vis.has(cur)){
+    vis.add(cur);
+    const n=nodesGlobal[cur]||ACC[cur]||{};
+    if(n.tipo==='DISTRITAL')return cur;
+    const ps=n.padres||[];
+    if(!ps.length)return null;
+    cur=ps[0];
+  }
+  return null;
+}
+
 function actualizarPanelLateral(distCodes,fallen){
   const lista=document.getElementById('lista');
-  if(!distCodes.length){
+  // Combinar distritals caídos por transporte + distritals padre de nodos aislados
+  const allFallen=new Set(fallen);
+  if(resultados_global&&resultados_global.sin_servicio){
+    for(const c of resultados_global.sin_servicio)allFallen.add(c);
+  }
+  // Agrupar por distrital padre
+  const gruposDist={};
+  for(const code of allFallen){
+    const n=nodesGlobal[code]||ACC[code]||{};
+    if(n.tipo==='DISTRITAL'){
+      if(!gruposDist[code])gruposDist[code]={self:true,hijos:[]};
+      else gruposDist[code].self=true;
+    } else {
+      const anc=getDistritaLAncestor(code);
+      const key=anc||code;
+      if(!gruposDist[key])gruposDist[key]={self:false,hijos:[]};
+      gruposDist[key].hijos.push(code);
+    }
+  }
+  if(!Object.keys(gruposDist).length){
     lista.innerHTML='<div style="color:#6b7280;font-size:11px;padding:8px 4px">Sin cortes activos — red operativa.</div>';
     return;
   }
   const abiertos=new Set();
   lista.querySelectorAll('.ci-bdy.open').forEach(el=>abiertos.add(el.id.replace('cb-','')));
-  // Contar intermedios/terminales por distrital raíz
-  const subCnt={};for(const c of distCodes)subCnt[c]={inter:0,term:0};
-  for(const code of fallen){
-    if(distCodes.includes(code))continue;
-    const n=ACC[code]||nodesGlobal[code]||{};
-    if(n.tipo!=='INTERMEDIO'&&n.tipo!=='TERMINAL')continue;
-    const root=getRootOf(code,fallen);
-    if(subCnt[root]){if(n.tipo==='INTERMEDIO')subCnt[root].inter++;else subCnt[root].term++;}
-  }
   function getCausa(code){
     const ovr=(overrides_global.causas||{})[code];if(ovr)return{causa:ovr.causa,manual:true};
     const soc=(overrides_global.sociales||{})[code];if(soc)return{causa:'SOCIAL',manual:true};
-    if(resultados_global){const inc=resultados_global.incidencias.find(i=>i.root===code);if(inc)return{causa:inc.causa,manual:false};}
+    if(resultados_global){const inc=resultados_global.incidencias.find(i=>i.root===code||i.members&&[...i.members].includes(code));if(inc)return{causa:inc.causa,manual:false};}
     return{causa:'POR_DEFINIR',manual:false};
   }
   function esAuto(code){
@@ -1116,28 +1144,57 @@ function actualizarPanelLateral(distCodes,fallen){
     const ntId=ntd_rev[code];
     return[...cortados_auto].some(k=>k.startsWith(ntId+'|')||k.endsWith('|'+ntId));
   }
-  const sorted=distCodes.slice().sort((a,b)=>(ACC[a]?.rol||'').localeCompare(ACC[b]?.rol||''));
-  lista.innerHTML=sorted.map(code=>{
-    const n=ACC[code]||{};
-    const{causa,manual}=getCausa(code);
-    const clr=CAUSA_CLR[causa]||'#6b7280';
-    const lbl=CAUSA_LABELS[causa]||causa;
-    const sc2=subCnt[code]||{inter:0,term:0};
-    const open=abiertos.has(code);
-    const nombre=(n.nombre||code).replace(/_/g,' ');
+  const sortedKeys=Object.keys(gruposDist).sort((a,b)=>{
+    const ra=(nodesGlobal[a]||ACC[a]||{}).rol||'';
+    const rb=(nodesGlobal[b]||ACC[b]||{}).rol||'';
+    return ra.localeCompare(rb);
+  });
+  lista.innerHTML=sortedKeys.map(distCode=>{
+    const nd=nodesGlobal[distCode]||ACC[distCode]||{};
+    const g=gruposDist[distCode];
+    const open=abiertos.has(distCode);
+    const nombreDist=(nd.nombre||nd.name||distCode).replace(/_/g,' ');
+    const distEsCaido=g.self;
+    // Cabecera distrital: VERDE si aún activo, ROJO si también cayó
+    const distClr=distEsCaido?'#ef4444':'#22c55e';
+    const distEstado=distEsCaido?'caído':'activo';
+    // Hijos ordenados por tipo
+    const hijosOrdenados=g.hijos.slice().sort((a,b)=>{
+      const ta=(nodesGlobal[a]||{}).tipo||'Z';
+      const tb=(nodesGlobal[b]||{}).tipo||'Z';
+      return ta.localeCompare(tb);
+    });
     const detHtml=`<div class="ci-sub">
-      ${sc2.inter>0?`<span>📡 ${sc2.inter} interm.</span>`:''}
-      ${sc2.term>0?`<span>📶 ${sc2.term} term.</span>`:''}
-      ${sc2.inter===0&&sc2.term===0?`<span style="color:#4b5563">Solo nodo distrital</span>`:''}
-      ${manual?`<span style="color:#f59e0b;font-size:9px">✏️ editado</span>`:''}
+      ${hijosOrdenados.map(hcode=>{
+        const hn=nodesGlobal[hcode]||ACC[hcode]||{};
+        const hNombre=(hn.nombre||hn.name||hcode).replace(/_/g,' ');
+        const hTipo=hn.tipo||'?';
+        const hRol=hn.rol||'';
+        const{causa}=getCausa(hcode);
+        const hClr=CAUSA_CLR[causa]||'#ef4444';
+        const hLbl=CAUSA_LABELS[causa]||causa;
+        const ico=hTipo==='INTERMEDIO'?'📡':'📶';
+        return`<div style="display:flex;align-items:center;gap:5px;padding:2px 0;border-left:2px solid ${hClr}40;padding-left:6px;margin-left:4px">
+          <span style="color:${hClr};font-size:9px">${ico}</span>
+          <span style="color:#e6edf3;font-size:10px;flex:1">${hNombre}</span>
+          <span style="color:#6b7280;font-size:9px">${hRol}</span>
+          <span style="background:${hClr}22;color:${hClr};border:1px solid ${hClr}44;font-size:8px;padding:1px 4px;border-radius:3px">${hLbl}</span>
+        </div>`;
+      }).join('')}
+      ${g.hijos.length===0?`<span style="color:#4b5563;font-size:10px">Solo nodo distrital caído</span>`:''}
     </div>`;
-    return`<div class="ci"><div class="ci-hdr" onclick="toggleCi('${code}')">
-      <span class="ci-arr" id="ct-${code}">${open?'▼':'►'}</span>
-      <span class="ro">${n.rol||'?'}</span>
-      <div style="flex:1;min-width:0"><div class="no">${nombre}</div><div class="re">${n.red||''}</div></div>
-      ${!esAuto(code)?'<span class="ci-man">manual</span>':''}
-      <span class="tag" style="background:${clr}22;color:${clr};border:1px solid ${clr}44;font-size:8px;padding:1px 5px;flex-shrink:0">${lbl}</span>
-    </div><div class="ci-bdy${open?' open':''}" id="cb-${code}">${detHtml}</div></div>`;
+    return`<div class="ci">
+      <div class="ci-hdr" onclick="toggleCi('${distCode}')">
+        <span class="ci-arr" id="ct-${distCode}">${open?'▼':'►'}</span>
+        <div style="width:8px;height:8px;border-radius:50%;background:${distClr};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div class="no">${nombreDist}</div>
+          <div class="re">${nd.red||''} · ${distEstado}</div>
+        </div>
+        <span style="color:${distClr};font-size:9px;font-weight:bold">${g.hijos.length} afectado${g.hijos.length!==1?'s':''}</span>
+      </div>
+      <div class="ci-bdy${open?' open':''}" id="cb-${distCode}">${detHtml}</div>
+    </div>`;
   }).join('');
 }
 
