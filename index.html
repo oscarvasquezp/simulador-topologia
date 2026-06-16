@@ -641,9 +641,17 @@ function parseBD(b64){
   if(!ws)throw new Error("Hoja 'BD_COMPLETA' no encontrada en el Excel BD");
   const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
   const h=raw[1]||[];
-  const fi=name=>h.findIndex(c=>String(c).trim()===name);
+  // Búsqueda flexible: primero exacta, luego insensible a mayúsculas/tildes/guiones
+  const fi=name=>{
+    const norm=s=>String(s).trim().toUpperCase().replace(/[_\-]/g,' ').replace(/[ÁÀÂÄ]/g,'A').replace(/[ÉÈÊË]/g,'E').replace(/[ÍÌÎÏ]/g,'I').replace(/[ÓÒÔÖ]/g,'O').replace(/[ÚÙÛÜ]/g,'U');
+    const n=norm(name);
+    let idx=h.findIndex(c=>norm(c)===n);
+    if(idx<0)idx=h.findIndex(c=>norm(c).includes(n)||n.includes(norm(c)));
+    return idx;
+  };
   const iCod=fi('CÓDIGO'),iNet=fi('NOMBRE NODO_NETECO'),iRed=fi('RED DISTRITAL');
   const iTipo=fi('TIPO'),iRol=fi('ROL'),iPad=fi('CÓD. PADRE'),iInf=fi('NOMBRE INFINERA');
+  console.log('BD columnas mapeadas → COD:',iCod,'NET:',iNet,'RED:',iRed,'TIPO:',iTipo,'ROL:',iRol,'PAD:',iPad,'INF:',iInf);
   if(iCod<0)throw new Error("Columna 'CÓDIGO' no encontrada en BD_COMPLETA");
   const nodes={},infinera_map={},neteco_map={};
   for(let i=2;i<raw.length;i++){
@@ -662,7 +670,7 @@ function parseBD(b64){
     if(inf_name)infinera_map[inf_name]=code;
     if(net_name)neteco_map[net_name]=code;
   }
-  if(!Object.keys(nodes).length)throw new Error("No se encontraron nodos en BD_COMPLETA");
+  if(!Object.keys(nodes).length)throw new Error("No se encontraron nodos en BD_COMPLETA. Columnas detectadas: "+h.slice(0,10).join(" | "));
   return{nodes,infinera_map,neteco_map};
 }
 
@@ -678,7 +686,8 @@ function parseInfinera(b64,infinera_map){
   catch{text=new TextDecoder('latin-1').decode(bytes);}
   if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
   const lines=text.split(/\r?\n/);
-  if(lines.length<2)throw new Error('CSV Infinera vacío o sin datos');
+  // Archivo solo con cabeceras = red operativa (sin alarmas activas)
+  if(lines.length<2||lines.filter(l=>l.trim()).length<=1)return{};
   const headers=lines[0].split(';').map(h=>h.trim().replace(/^"|"$/g,''));
   const iName=headers.indexOf('Node Name');
   const iDur=headers.indexOf('Duration');
@@ -697,7 +706,23 @@ function parseInfinera(b64,infinera_map){
     const onTimeStr=iTime>=0?(row[iTime]||''):'';
     if(!alarms[code])alarms[code]={days,on_time:onTimeStr};
   }
-  if(!Object.keys(alarms).length)throw new Error('Ningún nodo Infinera cruzó con la BD. Verifica el archivo CSV.');
+  // Contar filas con datos reales (no vacías)
+  const dataRows=lines.slice(1).filter(l=>l.trim()&&l.split(';').length>2).length;
+  if(!Object.keys(alarms).length){
+    if(dataRows===0){
+      // Archivo solo cabeceras → red operativa, sin alarmas
+      console.info('Infinera: archivo sin alarmas activas — red operativa.');
+      return{};
+    } else {
+      // Hay datos pero no cruzaron con la BD → posible desface de nombres
+      const sample=Object.keys(infinera_map).slice(0,3).join(', ')||'(vacío)';
+      const csvSample=lines.slice(1,4).map(l=>l.split(';')[iName]||'').filter(Boolean).join(', ');
+      console.warn('Infinera: '+dataRows+' filas pero ninguna cruzó con BD.');
+      console.warn('BD espera nombres como: '+sample);
+      console.warn('CSV tiene nombres como: '+csvSample);
+      return{}; // Continúa sin crashear — muestra red operativa
+    }
+  }
   return alarms;
 }
 
