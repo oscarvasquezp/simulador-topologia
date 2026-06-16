@@ -319,6 +319,9 @@ let resultados_global=null;
 let cargando=false;
 // Overrides: cargados desde Drive (overrides.json)
 let overrides_global={causas:{},sociales:{}};
+let blinkPhase=true;
+let blinkNtIds=new Set();
+let blinkInterval=null;
 let modal_current_root=null; // root code being edited
 const HOY=()=>new Date().toISOString().slice(0,10); // "YYYY-MM-DD"
 
@@ -395,6 +398,41 @@ const TC={CORE:'#3b82f6',ANILLO_COSTA:'#f59e0b',ANILLO_NORTE:'#38bdf8',ANILLO_IN
 function toC(x,y){return[x*sc+ox,y*sc+oy];}
 function frC(cx,cy){return[(cx-ox)/sc,(cy-oy)/sc];}
 
+function rebuildBlinkSet(){
+  blinkNtIds.clear();
+  if(!resultados_global||!resultados_global.sin_servicio||resultados_global.sin_servicio.size===0){
+    stopBlinkLoop();return;
+  }
+  const ssv=resultados_global.sin_servicio;
+  for(const[ntId,distCode]of Object.entries(NTD)){
+    if(ssv.has(distCode))continue; // ya caído → rojo constante
+    const nd=ACC[distCode]||nodesGlobal[distCode]||{};
+    const redName=(nd.red||nd.nombre||nd.name||'').toUpperCase().replace(/_/g,' ');
+    if(!redName)continue;
+    const hasFallenChild=[...ssv].some(c=>{
+      const cn=ACC[c]||nodesGlobal[c]||{};
+      const cr=(cn.red||'').toUpperCase().replace(/_/g,' ');
+      return cr===redName;
+    });
+    if(hasFallenChild)blinkNtIds.add(ntId);
+  }
+  if(blinkNtIds.size>0)startBlinkLoop();
+  else stopBlinkLoop();
+}
+
+function startBlinkLoop(){
+  if(blinkInterval)return; // ya está corriendo
+  blinkInterval=setInterval(()=>{
+    blinkPhase=!blinkPhase;
+    draw();
+  },600);
+}
+
+function stopBlinkLoop(){
+  if(blinkInterval){clearInterval(blinkInterval);blinkInterval=null;}
+  blinkPhase=true; // resetear a verde
+}
+
 function draw(){
   const W=canvas.width,H=canvas.height;
   ctx.clearRect(0,0,W,H);
@@ -447,15 +485,18 @@ function draw(){
     const distCaido=hasDist&&fallen.has(hasDist);
     const isCore=nt.tipo==='CORE';
     const r=Math.max(5,(isCore?13:9)*Math.min(sc,1.6));
-    ctx.shadowColor=aislado?'#ef4444aa':(isCore?'#3b82f688':'transparent');
-    ctx.shadowBlur=aislado?18:(isCore?14:0);
+    const _isBlk=blinkNtIds.has(id)&&!aislado;
+    ctx.shadowColor=aislado?'#ef4444aa':(_isBlk&&!blinkPhase?'#f59e0baa':(isCore?'#3b82f688':'transparent'));
+    ctx.shadowBlur=aislado?18:(_isBlk&&!blinkPhase?16:(isCore?14:0));
     ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
     ctx.fillStyle=aislado?'#1f0808':'#1c2128';ctx.fill();
     ctx.strokeStyle=aislado?'#ef4444':(TC[nt.tipo]||'#64748b');
     ctx.lineWidth=isCore?3:2;ctx.stroke();ctx.shadowBlur=0;
     if(hasDist){
       ctx.beginPath();ctx.arc(cx,cy,r*0.44,0,Math.PI*2);
-      ctx.fillStyle=(aislado||distCaido)?'#ef4444':'#22c55e';ctx.fill();
+      const isBlinking=blinkNtIds.has(id)&&!aislado&&!distCaido;
+      const dotClr=(aislado||distCaido)?'#ef4444':(isBlinking&&!blinkPhase?'#f59e0b':'#22c55e');
+      ctx.fillStyle=dotClr;ctx.fill();
     }
     if(sc>0.38){
       const fz=Math.max(8,10.5*Math.min(sc,1.35));
@@ -948,6 +989,7 @@ async function cargarTodo(manual=false){
     const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
     resultados_global=res;
     actualizarSimulador(res.sin_servicio);
+  rebuildBlinkSet();
     actualizarDashboard(res);
     if(manual)flash('✅ Datos actualizados correctamente','ok');
   }catch(err){
