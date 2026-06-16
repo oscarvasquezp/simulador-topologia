@@ -306,10 +306,6 @@ const RED_TO_DIST={};
 for(const[code,n]of Object.entries(ACC)){
   if(n.tipo==='DISTRITAL'&&!RED_TO_DIST[n.red])RED_TO_DIST[n.red]=code;
 }
-// Helper: buscar nodo en nodesGlobal (BD) o ACC (embebido)
-const gN=code=>gN(code);
-// Helper: acceso rápido a elemento DOM
-const $=id=>document.getElementById(id);
 
 // ═══════════════════════════════════════════════════════════════════
 //  ESTADO GLOBAL
@@ -327,7 +323,6 @@ let blinkPhase=true;
 let blinkNtIds=new Set();
 let blinkInterval=null;
 let modal_current_root=null; // root code being edited
-let _fallenCache=null; // cache BFS+ssv — se invalida al cambiar cortes o datos
 const HOY=()=>new Date().toISOString().slice(0,10); // "YYYY-MM-DD"
 
 // ═══════════════════════════════════════════════════════════════════
@@ -372,28 +367,29 @@ function calcImpacto(){
   return{alc,ais,fallen};
 }
 
-// Obtener fallen cacheado (BFS + sin_servicio) — evita recómputo BFS en mismo ciclo
-function getAllFallen(){
-  if(_fallenCache)return _fallenCache;
-  const{fallen:bfs}=calcImpacto();
-  _fallenCache=new Set(bfs);
-  if(resultados_global?.sin_servicio)for(const c of resultados_global.sin_servicio)_fallenCache.add(c);
-  return _fallenCache;
-}
-function invalidarFallen(){_fallenCache=null;}
-
 function updateStats(){
-  const fallen=getAllFallen();
-  const dist=[...fallen].filter(c=>gN(c).tipo==='DISTRITAL');
-  const inter=[...fallen].filter(c=>gN(c).tipo==='INTERMEDIO');
-  const term=[...fallen].filter(c=>gN(c).tipo==='TERMINAL');
+  const{fallen:fallenBFS}=calcImpacto();
+  // Combinar BFS (transporte) con análisis Infinera (nodos aislados sin corte de transporte)
+  const fallen=new Set(fallenBFS);
+  if(resultados_global&&resultados_global.sin_servicio){
+    for(const c of resultados_global.sin_servicio)fallen.add(c);
+  }
+  const dist=[...fallen].filter(c=>(ACC[c]||nodesGlobal[c])?.tipo==='DISTRITAL');
+  const inter=[...fallen].filter(c=>(ACC[c]||nodesGlobal[c])?.tipo==='INTERMEDIO');
+  const term=[...fallen].filter(c=>(ACC[c]||nodesGlobal[c])?.tipo==='TERMINAL');
   const tot=fallen.size;
-  $('s-ct').textContent=tot;  $('s-at').textContent=TOT.total-tot;
-  $('s-dc').textContent=dist.length; $('s-da').textContent=TOT.D-dist.length;
-  $('s-ic').textContent=inter.length;$('s-ia').textContent=TOT.I-inter.length;
-  $('s-tc').textContent=term.length; $('s-ta').textContent=TOT.T-term.length;
-  $('badge').style.display=(cortados.size>0||cortados_auto.size>0)?'flex':'none';
-  $('n-cortes').textContent=cortados_auto.size>0?'⚡ auto-cortados':cortados.size+' manual(es)';
+  document.getElementById('s-ct').textContent=tot;
+  document.getElementById('s-at').textContent=TOT.total-tot;
+  document.getElementById('s-dc').textContent=dist.length;
+  document.getElementById('s-da').textContent=TOT.D-dist.length;
+  document.getElementById('s-ic').textContent=inter.length;
+  document.getElementById('s-ia').textContent=TOT.I-inter.length;
+  document.getElementById('s-tc').textContent=term.length;
+  document.getElementById('s-ta').textContent=TOT.T-term.length;
+  const badge=document.getElementById('badge');
+  badge.style.display=(cortados.size>0||cortados_auto.size>0)?'flex':'none';
+  const nAuto=cortados_auto.size>0?`⚡ ${[...new Set(Object.values(NTD).filter(c=>cortados_auto.size>0))].filter(c=>{const nt=ntd_rev&&ntd_rev[c];return nt&&(cortados_auto.has(nt+'|'+Object.keys(NTP)[0])||[...cortados_auto].some(k=>k.startsWith(nt+'|')||k.endsWith('|'+nt)));}).length||'?'} auto`:'';
+  document.getElementById('n-cortes').textContent=cortados_auto.size>0?`⚡ auto-cortados`:cortados.size+' manual(es)';
   actualizarPanelLateral(dist,fallen);
 }
 
@@ -404,16 +400,24 @@ function frC(cx,cy){return[(cx-ox)/sc,(cy-oy)/sc];}
 
 function rebuildBlinkSet(){
   blinkNtIds.clear();
-  const ssv=resultados_global?.sin_servicio;
-  if(!ssv||!ssv.size){stopBlinkLoop();return;}
-  // Construir mapa red→tiene_hijo_caído para O(1) lookup (evita O(n²) con .some())
-  const redConCaidos=new Set([...ssv].map(c=>gN(c).red).filter(Boolean));
-  for(const[ntId,distCode]of Object.entries(NTD)){
-    if(ssv.has(distCode))continue; // caído → rojo constante
-    const nd=gN(distCode);
-    if(nd.red&&redConCaidos.has(nd.red))blinkNtIds.add(ntId);
+  if(!resultados_global||!resultados_global.sin_servicio||resultados_global.sin_servicio.size===0){
+    stopBlinkLoop();return;
   }
-  if(blinkNtIds.size>0)startBlinkLoop();else stopBlinkLoop();
+  const ssv=resultados_global.sin_servicio;
+  for(const[ntId,distCode]of Object.entries(NTD)){
+    if(ssv.has(distCode))continue; // ya caído → rojo constante
+    const nd=ACC[distCode]||nodesGlobal[distCode]||{};
+    const redName=(nd.red||nd.nombre||nd.name||'').toUpperCase().replace(/_/g,' ');
+    if(!redName)continue;
+    const hasFallenChild=[...ssv].some(c=>{
+      const cn=ACC[c]||nodesGlobal[c]||{};
+      const cr=(cn.red||'').toUpperCase().replace(/_/g,' ');
+      return cr===redName;
+    });
+    if(hasFallenChild)blinkNtIds.add(ntId);
+  }
+  if(blinkNtIds.size>0)startBlinkLoop();
+  else stopBlinkLoop();
 }
 
 function startBlinkLoop(){
@@ -546,7 +550,7 @@ canvas.addEventListener('mouseup',e=>{
   if(idx!==null&&modo==='corte'){
     const[a,b]=ENL[idx];const k1=a+'|'+b,k2=b+'|'+a;
     if(cortados.has(k1)||cortados.has(k2)){cortados.delete(k1);cortados.delete(k2);flash(`✅ Restaurado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'ok');}
-    else{cortados.add(k1);invalidarFallen();flash(`✂️ Cortado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'err');}
+    else{cortados.add(k1);flash(`✂️ Cortado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'err');}
     updateStats();draw();
   }
 });
@@ -557,11 +561,11 @@ canvas.addEventListener('wheel',e=>{
 },{passive:false});
 
 function flash(txt,tipo){
-  const el=$('inf');el.textContent=txt;el.className=tipo;
+  const el=document.getElementById('inf');el.textContent=txt;el.className=tipo;
   el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2500);
 }
 function resetAll(){
-  cortados.clear();criticos_idx.clear();invalidarFallen();stopBlinkLoop();
+  cortados.clear();criticos_idx.clear();
   updateStats();draw();
   flash('✅ Cortes manuales restaurados (Infinera activo)','ok');
 }
@@ -859,8 +863,8 @@ function actualizarDashboard({incidencias,sin_servicio}){
   document.getElementById('kv-inc').textContent=incidencias.length;
   const now=new Date();
   const fmt=`${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-  $('fecha-rep').textContent=fmt;
-  const tbody=$('tbl-body');
+  document.getElementById('fecha-rep').textContent=fmt;
+  const tbody=document.getElementById('tbl-body');
   if(!incidencias.length){
     tbody.innerHTML='<tr><td colspan="7" class="no-data">✅ Sin incidencias activas — red totalmente operativa</td></tr>';
   }else{
@@ -932,7 +936,7 @@ function buildNtdRev(){
 
 function actualizarSimulador(sin_servicio){
   if(!ntd_rev)buildNtdRev();
-  cortados_auto.clear();invalidarFallen();
+  cortados_auto.clear();
   // Para cada distrital sin servicio → cortar todos sus enlaces en la topología
   for(const code of sin_servicio){
     const ntId=ntd_rev[code];
@@ -983,7 +987,7 @@ async function cargarTodo(manual=false){
 
     // 5. Analizar (overrides ya cargados → clasificarRaiz los aplica)
     const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
-    resultados_global=res;invalidarFallen();
+    resultados_global=res;
     actualizarSimulador(res.sin_servicio);
   rebuildBlinkSet();
     actualizarDashboard(res);
@@ -992,7 +996,7 @@ async function cargarTodo(manual=false){
     console.error(err);
     const msg=err.message||String(err);
     setSt('bd','❌ '+msg.slice(0,50));
-    $('tbl-body').innerHTML=`<tr><td colspan="7" class="no-data">❌ ${msg}</td></tr>`;
+    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="7" class="no-data">❌ ${msg}</td></tr>`;
     if(manual)flash('❌ '+msg.slice(0,60),'err');
   }finally{
     cargando=false;btn.textContent='🔄 Actualizar';btn.disabled=false;
@@ -1018,8 +1022,8 @@ function fmtD(iso){
 // ═══════════════════════════════════════════════════════════════════
 async function generarPPT(){
   if(!resultados_global){alert('Carga los datos primero.');return;}
-  const st=$('ppt-status');
-  const btnP=$('btn-ppt');
+  const st=document.getElementById('ppt-status');
+  const btnP=document.getElementById('btn-ppt');
   st.textContent='⏳ Generando PPT...';st.style.color='#f59e0b';btnP.disabled=true;
   try{
     const pres=new PptxGenJS();
@@ -1179,7 +1183,7 @@ function getRootOf(code,fallen){
   let cur=code;const vis=new Set();
   while(cur&&!vis.has(cur)){
     vis.add(cur);
-    const n=gN(cur);const ps=n.padres||[];
+    const n=ACC[cur]||nodesGlobal[cur]||{};const ps=n.padres||[];
     if(!ps.length)return cur;
     const fp=ps.filter(p=>fallen.has(p));
     if(fp.length===ps.length)cur=fp[0];else return cur;
@@ -1192,20 +1196,20 @@ function getDistritaLAncestor(code){
   const vis=new Set();let cur=code;
   while(cur&&!vis.has(cur)){
     vis.add(cur);
-    const n=gN(cur);
+    const n=nodesGlobal[cur]||ACC[cur]||{};
     if(n.tipo==='DISTRITAL')return cur;
     const ps=n.padres||[];
     if(!ps.length)break;
     cur=ps[0];
   }
   // Intento 2: usar campo RED DISTRITAL como respaldo (más robusto)
-  const n0=gN(code);
+  const n0=nodesGlobal[code]||ACC[code]||{};
   if(n0.red&&RED_TO_DIST[n0.red])return RED_TO_DIST[n0.red];
   return null;
 }
 
 function actualizarPanelLateral(distCodes,fallen){
-  const lista=$('lista');
+  const lista=document.getElementById('lista');
   // Combinar distritals caídos por transporte + distritals padre de nodos aislados
   const allFallen=new Set(fallen);
   if(resultados_global&&resultados_global.sin_servicio){
@@ -1214,7 +1218,7 @@ function actualizarPanelLateral(distCodes,fallen){
   // Agrupar por distrital padre
   const gruposDist={};
   for(const code of allFallen){
-    const n=gN(code);
+    const n=nodesGlobal[code]||ACC[code]||{};
     if(n.tipo==='DISTRITAL'){
       if(!gruposDist[code])gruposDist[code]={self:true,hijos:[]};
       else gruposDist[code].self=true;
@@ -1243,12 +1247,12 @@ function actualizarPanelLateral(distCodes,fallen){
     return[...cortados_auto].some(k=>k.startsWith(ntId+'|')||k.endsWith('|'+ntId));
   }
   const sortedKeys=Object.keys(gruposDist).sort((a,b)=>{
-    const ra=gN(a).rol||'';
-    const rb=gN(b).rol||'';
+    const ra=(nodesGlobal[a]||ACC[a]||{}).rol||'';
+    const rb=(nodesGlobal[b]||ACC[b]||{}).rol||'';
     return ra.localeCompare(rb);
   });
   lista.innerHTML=sortedKeys.map(distCode=>{
-    const nd=gN(distCode);
+    const nd=nodesGlobal[distCode]||ACC[distCode]||{};
     const g=gruposDist[distCode];
     const open=abiertos.has(distCode);
     const nombreDist=(nd.nombre||nd.name||distCode).replace(/_/g,' ');
@@ -1264,7 +1268,7 @@ function actualizarPanelLateral(distCodes,fallen){
     });
     const detHtml=`<div class="ci-sub">
       ${hijosOrdenados.map(hcode=>{
-        const hn=gN(hcode);
+        const hn=nodesGlobal[hcode]||ACC[hcode]||{};
         const hNombre=(hn.nombre||hn.name||hcode).replace(/_/g,' ');
         const hTipo=hn.tipo||'?';
         const hRol=hn.rol||'';
@@ -1341,7 +1345,7 @@ async function guardarOverridesRemoto(){
 // ── Modal edición causa ─────────────────────────────────
 function abrirEditCausa(root){
   modal_current_root=root;
-  const n=gN(root);
+  const n=nodesGlobal[root]||ACC[root]||{};
   document.getElementById('modal-titulo').textContent=(n.name||n.nombre||root).replace(/_/g,' ');
   const ovr=(overrides_global.causas||{})[root]||{};
   const causaActual=ovr.causa||(resultados_global?.incidencias.find(i=>i.root===root)?.causa)||'POR_DEFINIR';
@@ -1381,7 +1385,7 @@ async function guardarOverride(){
 // ── Panel gestión social ─────────────────────────────────
 function renderPanelSocial(){
   const soc=overrides_global.sociales||{};
-  const lista=$('soc-lista');if(!lista)return;
+  const lista=document.getElementById('soc-lista');if(!lista)return;
   // Combinar: hardcoded (SOCIAL_OVR) + dinámicos (overrides.sociales)
   // Solo mostrar hardcoded si el nodo está actualmente en sin_servicio (Infinera lo detecta caído)
   const hardcodedActivos=[...SOCIAL_OVR].filter(code=>{
@@ -1394,7 +1398,7 @@ function renderPanelSocial(){
     return;
   }
   const hardHtml=hardcodedActivos.map(code=>{
-    const n=gN(code);
+    const n=nodesGlobal[code]||ACC[code]||{};
     const nombre=(n.name||n.nombre||code).replace(/_/g,' ');
     return`<div class="soc-item">
       <span class="soc-code">${code}</span>
@@ -1403,7 +1407,7 @@ function renderPanelSocial(){
     </div>`;
   }).join('');
   const dynHtml=dinamicos.map(([code,info])=>{
-    const n=gN(code);
+    const n=nodesGlobal[code]||ACC[code]||{};
     const nombre=(n.name||n.nombre||code).replace(/_/g,' ');
     return`<div class="soc-item">
       <span class="soc-code">${code}</span>
@@ -1414,8 +1418,8 @@ function renderPanelSocial(){
   lista.innerHTML=hardHtml+dynHtml;
 }
 
-function mostrarFormSocial(){$('soc-form').style.display='block';document.getElementById('soc-codigo').focus();}
-function ocultarFormSocial(){$('soc-form').style.display='none';}
+function mostrarFormSocial(){document.getElementById('soc-form').style.display='block';document.getElementById('soc-codigo').focus();}
+function ocultarFormSocial(){document.getElementById('soc-form').style.display='none';}
 
 async function agregarSocial(){
   const cod=document.getElementById('soc-codigo').value.trim().toUpperCase();
