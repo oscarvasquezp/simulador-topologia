@@ -683,7 +683,7 @@ function parseInfinera(b64,infinera_map){
   for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
   let text;
   try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}
-  catch{text=new TextDecoder('latin-1').decode(bytes);}
+  catch{text=new TextDecoder('windows-1252').decode(bytes);}
   if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
   const lines=text.split(/\r?\n/);
   // Archivo solo con cabeceras = red operativa (sin alarmas activas)
@@ -706,21 +706,27 @@ function parseInfinera(b64,infinera_map){
     const onTimeStr=iTime>=0?(row[iTime]||''):'';
     if(!alarms[code])alarms[code]={days,on_time:onTimeStr};
   }
-  // Contar filas con datos reales (no vacías)
-  const dataRows=lines.slice(1).filter(l=>l.trim()&&l.split(';').length>2).length;
+  // Contar solo filas con alarmas REALES (excluir PRUEBA y vacías)
+  const realRows=lines.slice(1).filter(l=>{
+    if(!l.trim()||l.split(';').length<2)return false;
+    const nm=(l.split(';')[iName]||'').trim();
+    return nm&&!/PRUEBA/i.test(nm); // excluir PRUEBA
+  }).length;
   if(!Object.keys(alarms).length){
-    if(dataRows===0){
-      // Archivo solo cabeceras → red operativa, sin alarmas
-      console.info('Infinera: archivo sin alarmas activas — red operativa.');
+    if(realRows===0){
+      // Sin alarmas reales (vacío o solo PRUEBA) → red operativa
+      console.info('Infinera: sin alarmas activas hoy — red operativa.');
       return{};
     } else {
-      // Hay datos pero no cruzaron con la BD → posible desface de nombres
+      // Hay filas reales pero no cruzan con BD → posible desface de nombres
       const sample=Object.keys(infinera_map).slice(0,3).join(', ')||'(vacío)';
-      const csvSample=lines.slice(1,4).map(l=>l.split(';')[iName]||'').filter(Boolean).join(', ');
-      console.warn('Infinera: '+dataRows+' filas pero ninguna cruzó con BD.');
+      const csvSample=lines.slice(1,5)
+        .map(l=>(l.split(';')[iName]||'').trim())
+        .filter(n=>n&&!/PRUEBA/i.test(n)).join(', ');
+      console.warn('Infinera: '+realRows+' filas reales pero ninguna cruzó con BD.');
       console.warn('BD espera nombres como: '+sample);
       console.warn('CSV tiene nombres como: '+csvSample);
-      return{}; // Continúa sin crashear — muestra red operativa
+      return{}; // No crashear — mostrar red operativa
     }
   }
   return alarms;
