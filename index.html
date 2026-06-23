@@ -159,6 +159,34 @@ canvas{display:block}
 #btn-ppt:disabled{opacity:.5;cursor:default}
 #ppt-status{font-size:10px;text-align:center;min-height:14px;width:100%}
 #dash-foot{padding:5px 14px;font-size:10px;color:#6b7280;border-top:1px solid #21262d;background:#0d1117;flex-shrink:0;min-height:24px}
+
+/* ── ALERTA NETECO COMM (solo operador) ──────────────────────── */
+#btn-net-alert{display:none;align-items:center;gap:6px;padding:4px 11px;border-radius:7px;border:1px solid #374151;background:#1f2937;color:#6b7280;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit;white-space:nowrap;transition:.15s}
+#btn-net-alert.activo{display:flex;background:#1c1107;border-color:#f59e0b;color:#f59e0b;animation:net-pulse 2s ease-in-out infinite}
+@keyframes net-pulse{0%,100%{box-shadow:0 0 0 0 #f59e0b33}50%{box-shadow:0 0 0 6px #f59e0b00}}
+#net-alert-count{background:#f59e0b;color:#0d1117;border-radius:9px;font-size:9px;font-weight:800;padding:1px 6px;min-width:16px;text-align:center}
+/* Panel deslizante */
+#panel-net-alert{position:fixed;top:42px;right:0;width:375px;max-height:calc(100vh - 42px);background:#161b22;border-left:1px solid #f59e0b55;border-bottom:1px solid #f59e0b33;z-index:4000;display:none;flex-direction:column;box-shadow:-8px 4px 28px #000000bb;transform:translateX(10px);opacity:0;transition:transform .2s ease,opacity .2s ease}
+#panel-net-alert.open{display:flex;transform:translateX(0);opacity:1}
+#pna-head{padding:11px 14px;border-bottom:1px solid #21262d;display:flex;align-items:flex-start;justify-content:space-between;background:#0d1117;flex-shrink:0}
+#pna-head-txt h3{font-size:12px;color:#f59e0b;font-weight:700;margin:0 0 3px}
+#pna-head-txt p{font-size:9.5px;color:#6b7280;margin:0;line-height:1.5}
+#btn-pna-close{background:none;border:none;color:#6b7280;cursor:pointer;font-size:15px;padding:2px 5px;border-radius:4px;line-height:1;flex-shrink:0;margin-top:-2px}
+#btn-pna-close:hover{background:#1f2937;color:#e6edf3}
+#pna-nota{padding:8px 14px;font-size:9.5px;color:#6b7280;background:#0d1117;border-bottom:1px solid #21262d;flex-shrink:0;line-height:1.6}
+#pna-nota strong{color:#94a3b8}
+#pna-lista{flex:1;overflow-y:auto;padding:6px 10px}
+#pna-lista::-webkit-scrollbar{width:3px}
+#pna-lista::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+.pna-item{display:flex;gap:9px;align-items:flex-start;padding:8px 6px;border-bottom:1px solid #1f2937;margin-bottom:2px}
+.pna-item:last-child{border-bottom:none}
+.pna-bullet{width:7px;height:7px;background:#f59e0b;border-radius:50%;flex-shrink:0;margin-top:4px;animation:gepulse 1.8s ease-in-out infinite}
+.pna-cod{font-family:'Courier New',monospace;font-size:9.5px;color:#f59e0b;font-weight:700;flex-shrink:0;margin-top:2px;letter-spacing:.3px}
+.pna-info{flex:1}
+.pna-name{font-size:11px;color:#e6edf3;font-weight:600;margin-bottom:2px}
+.pna-meta{font-size:9.5px;color:#6b7280}
+.pna-time{font-size:9px;color:#4b5563;margin-top:2px;font-family:'Courier New',monospace}
+.pna-badge{display:inline-block;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;margin-top:3px}
 </style>
 </head>
 <body>
@@ -173,6 +201,10 @@ canvas{display:block}
     <span class="di-item" id="di-net">⏳ NetEco...</span>
   </div>
   <button id="btn-act" onclick="cargarTodo(true)">🔄 Actualizar</button>
+  <button id="btn-net-alert" onclick="togglePanelAlerta(event)"
+    title="Nodos con alarma 'Communication Between NMS And NE Is Abnormal' en NetEco que NO aparecen en Infinera — Solo para evaluación del operador">
+    🔔 NetEco Comm &nbsp;<span id="net-alert-count">0</span>
+  </button>
 </nav>
 
 <!-- TAB 1: SIMULADOR -->
@@ -291,6 +323,31 @@ canvas{display:block}
   <div id="dash-foot">Esperando datos...</div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- PANEL ALERTA NETECO COMM — solo para evaluación operador  -->
+<!-- No afecta métricas, dashboard, ni PPT                     -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="panel-net-alert">
+  <div id="pna-head">
+    <div id="pna-head-txt">
+      <h3>⚠ NetEco Comm — sin presencia en Infinera</h3>
+      <p>Alarma <em>"Communication Between NMS And NE Is Abnormal"</em> (Critical)<br>
+         detectada en NetEco pero el nodo <strong>no aparece en Infinera</strong></p>
+    </div>
+    <button id="btn-pna-close" onclick="togglePanelAlerta(event)" title="Cerrar">✕</button>
+  </div>
+  <div id="pna-nota">
+    ℹ️ <strong>Solo para evaluación del operador.</strong><br>
+    Estos nodos <strong>no afectan</strong> métricas, dashboard ni PPT.<br>
+    NetEco los detecta caídos; Infinera no registra pérdida de tráfico.
+  </div>
+  <div id="pna-lista">
+    <div style="color:#6b7280;text-align:center;padding:22px 10px;font-size:11px">
+      ✅ Sin alertas activas.
+    </div>
+  </div>
+</div>
+
 <!-- Override modal -->
 <div id="modal-ovr">
   <div id="modal-box">
@@ -339,6 +396,8 @@ let blinkPhase=true;
 let blinkNtIds=new Set();
 let blinkInterval=null;
 let modal_current_root=null; // root code being edited
+let panel_net_alert_open=false;   // estado panel alerta NetEco
+let alertas_neteco_comm_data=[];  // datos de la última detección
 const HOY=()=>new Date().toISOString().slice(0,10); // "YYYY-MM-DD"
 
 // ═══════════════════════════════════════════════════════════════════
@@ -739,11 +798,20 @@ function parseNetEco(b64,neteco_map){
   const wb=XLSX.read(b64,{type:'base64'});
   const ws=wb.Sheets[wb.SheetNames[0]];
   const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
-  // Python: header=None + skiprows=5 → datos desde fila absoluta 5
-  // Columnas fijas: 0=_, 1=Severity, 2=Name(alarma), 3=Site Name, 4=First Occurred
+  // Columnas fijas (iguales en XLSX y CSV):
+  // 0=_, 1=Severity, 2=Name(alarma), 3=Site Name, 4=First Occurred
   const SEV=1,ALARM=2,SITE=3,TIME=4;
+
+  // ── Detección dinámica del header (soporta XLSX con 5 filas de cabecera
+  //    y CSV con 8 filas de cabecera, sin hardcodear el número de skip) ──
+  let dataStart=5; // fallback si no se encuentra
+  for(let i=0;i<Math.min(raw.length,15);i++){
+    const r=raw[i];
+    if(r&&String(r[SEV]||'').trim()==='Severity'){dataStart=i+1;break;}
+  }
+
   const neteco_comm={},neteco_energy={},neteco_ge={};
-  for(let i=5;i<raw.length;i++){
+  for(let i=dataStart;i<raw.length;i++){
     const r=raw[i];if(!r||!r[ALARM])continue;
     const severity=String(r[SEV]||'').trim();
     const alarm=String(r[ALARM]||'').trim();
@@ -1036,6 +1104,29 @@ async function cargarTodo(manual=false){
         if(rNet.ok){const r=parseNetEco(rNet.data,neteco_map);neteco_comm=r.neteco_comm;neteco_energy=r.neteco_energy;ge_activos_global=r.neteco_ge||{};}
       }catch(e){console.warn('NetEco parse error:',e.message);}
     }
+
+    // ── ALERTA PERSONAL: NetEco Comm sin presencia en Infinera ─────────────
+    // Solo para evaluación del operador. No modifica inf_alarms ni ninguna
+    // variable usada en el análisis → no afecta dashboard ni PPT.
+    {
+      const _alertas=[];
+      for(const[code,time] of Object.entries(neteco_comm)){
+        if(!inf_alarms[code]){
+          const nd=nodes[code]||{};
+          _alertas.push({
+            code,
+            name: nd.name||nd.nombre||code,
+            red:  nd.red||'',
+            rol:  nd.rol||'',
+            time
+          });
+        }
+      }
+      // Ordenar por red para facilitar lectura
+      _alertas.sort((a,b)=>(a.red||'').localeCompare(b.red||'')||(a.code.localeCompare(b.code)));
+      actualizarAlertasNetEco(_alertas);
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     // 5. Analizar (overrides ya cargados → clasificarRaiz los aplica)
     const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
@@ -1516,6 +1607,76 @@ async function levantarSocial(code){
   renderPanelSocial();
   flash(`✅ Condición social de ${code} levantada`,'ok');
   if(resultados_global)actualizarDashboard(resultados_global);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ALERTA PERSONAL — NETECO COMM SIN INFINERA
+//  Propósito : avisar al operador sin afectar ninguna métrica
+//  Criterio  : neteco_comm contiene el nodo Y inf_alarms NO lo tiene
+//  Impacto   : cero — solo actualiza el panel lateral
+// ═══════════════════════════════════════════════════════════════════
+function togglePanelAlerta(e){
+  if(e)e.stopPropagation();
+  panel_net_alert_open=!panel_net_alert_open;
+  const pan=document.getElementById('panel-net-alert');
+  // Forzamos display:flex antes de aplicar .open para que la transición CSS funcione
+  if(panel_net_alert_open){
+    pan.style.display='flex';
+    requestAnimationFrame(()=>{ pan.classList.add('open'); });
+  }else{
+    pan.classList.remove('open');
+    setTimeout(()=>{ if(!panel_net_alert_open) pan.style.display='none'; },210);
+  }
+}
+
+// Cierra el panel si el usuario hace clic fuera de él
+document.addEventListener('click',function(e){
+  if(!panel_net_alert_open)return;
+  const pan=document.getElementById('panel-net-alert');
+  const btn=document.getElementById('btn-net-alert');
+  if(pan&&!pan.contains(e.target)&&btn&&!btn.contains(e.target)){
+    panel_net_alert_open=false;
+    pan.classList.remove('open');
+    setTimeout(()=>{ if(!panel_net_alert_open) pan.style.display='none'; },210);
+  }
+});
+
+function actualizarAlertasNetEco(alertas){
+  alertas_neteco_comm_data=alertas;
+  const btn  = document.getElementById('btn-net-alert');
+  const cnt  = document.getElementById('net-alert-count');
+  const lista= document.getElementById('pna-lista');
+  if(!btn||!lista)return;
+
+  if(!alertas.length){
+    btn.classList.remove('activo');
+    lista.innerHTML='<div style="color:#6b7280;text-align:center;padding:22px 10px;font-size:11px">✅ Sin alertas activas.</div>';
+    return;
+  }
+
+  // Mostrar botón y actualizar contador
+  btn.classList.add('activo');
+  if(cnt) cnt.textContent=alertas.length;
+
+  // Construir items
+  lista.innerHTML=alertas.map(a=>{
+    const nombre=(a.name||a.code).replace(/_/g,' ');
+    const red=(a.red||'—').replace(/_/g,' ');
+    const rol=a.rol||'—';
+    const tiempo=a.time||'—';
+    return `<div class="pna-item">
+      <div class="pna-bullet"></div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="pna-cod">${a.code}</span>
+          <span class="pna-badge">COMM NetEco</span>
+        </div>
+        <div class="pna-name">${nombre}</div>
+        <div class="pna-meta">Red: <strong style="color:#94a3b8">${red}</strong> &nbsp;·&nbsp; Rol: ${rol}</div>
+        <div class="pna-time">⏱ NetEco desde: ${tiempo}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════════
