@@ -960,16 +960,24 @@ function construirTexto(inc){
   const nombre_uc=nombre.toUpperCase();
   const doble=n.doble||false;
   const es_d=(n.rol||'').startsWith('D');
+
+  // ── Nota del técnico: si existe, reemplaza el DETALLE automático
+  //    tanto en dashboard como en PPTX (construirTexto es la fuente única)
+  const nota_tecnico=((overrides_global.causas||{})[inc.root]||{}).nota||'';
+
   if(inc.count===1){
-    if(inc.causa==='SOCIAL')return[`${nombre_uc} (${red})`,'Nodo terminal aislado, gestión en campo'];
+    const titulo=`${nombre_uc} (${red})`;
+    if(nota_tecnico) return[titulo, nota_tecnico, true];   // ← [titulo, detalle, es_nota]
+    if(inc.causa==='SOCIAL') return[titulo,'Nodo terminal aislado, gestión en campo', false];
     const tipo=es_d?'Nodo distrital aislado':'Nodo aislado';
-    return[`${nombre_uc} (${red})`,tipo+(doble?' (doble enlace)':'')];
+    return[titulo, tipo+(doble?' (doble enlace)':''), false];
   }
   const titulo=es_d?`Red ${titleCase(nombre)}`+(doble?' (doble enlace)':''):`${nombre_uc} (${red})`;
   const i_n=[...inc.members].filter(c=>(nodesGlobal[c]?.rol||'').startsWith('I')).length;
   const a_n=[...inc.members].filter(c=>{const r=nodesGlobal[c]?.rol||'';return!r.startsWith('D')&&!r.startsWith('I');}).length;
-  const detalle=inc.intermitencia?notaIntermitencia(inc):`${i_n} interm. → ${a_n} terminales`;
-  return[titulo,detalle];
+  const detalle_auto=inc.intermitencia?notaIntermitencia(inc):`${i_n} interm. → ${a_n} terminales`;
+  // Si hay nota → reemplaza el texto automático; si no → texto topológico normal
+  return[titulo, nota_tecnico||detalle_auto, !!nota_tecnico];
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -989,19 +997,23 @@ function actualizarDashboard({incidencias,sin_servicio}){
     tbody.innerHTML='<tr><td colspan="7" class="no-data">✅ Sin incidencias activas — red totalmente operativa</td></tr>';
   }else{
     tbody.innerHTML=incidencias.map((inc,i)=>{
-      const[titulo,detalle]=construirTexto(inc);
+      const[titulo,detalle,es_nota]=construirTexto(inc);
       const clr=CAUSA_CLR[inc.causa]||'#6b7280';
       const lbl=CAUSA_LABELS[inc.causa]||inc.causa;
       const dm=inc.intermitencia?`<span style="color:#f59e0b">${inc.root_days}⚠</span>`:inc.root_days;
       const hasOvr=!!(overrides_global.causas||{})[inc.root];
       const editTitle=hasOvr?'Override activo — clic para editar':'Editar causa raíz';
+      // Si el detalle viene de nota del técnico → añadir indicador visual
+      const detalle_html=es_nota
+        ?`<span title="Nota del técnico" style="color:#94a3b8;font-size:9px;margin-right:4px">✏️</span>${detalle}`
+        :detalle;
       return`<tr>
         <td class="tc" style="color:#6b7280">${i+1}</td>
         <td style="text-align:center"><span class="tag" style="background:${clr}22;color:${clr};border:1px solid ${clr}55">${lbl}</span>${hasOvr?'<span style="color:#f59e0b;font-size:9px;margin-left:4px">✏️</span>':''}</td>
         <td class="tbold">${titulo}</td>
         <td class="tc tbold">${inc.count}</td>
         <td class="tc tbold">${dm}</td>
-        <td class="det">${detalle}</td>
+        <td class="det">${detalle_html}</td>
         <td class="tc"><button onclick="abrirEditCausa('${inc.root}')" title="${editTitle}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;color:${hasOvr?'#f59e0b':'#374151'}" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='none'">✏️</button></td>
       </tr>`;
     }).join('');
