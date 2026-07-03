@@ -25,6 +25,9 @@ body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow
 .tab.active{display:flex}
 #tab-sim{flex-direction:row}
 #tab-dash{flex-direction:column;overflow:hidden}
+#tab-inv{flex-direction:column;overflow:hidden}
+#tab-ops{flex-direction:column;overflow:hidden}
+#tab-log{flex-direction:column;overflow:hidden}
 
 /* ── SIMULATOR (from v5, adapted) ───────────────────── */
 #app{display:flex;height:100%;width:100%}
@@ -160,11 +163,174 @@ canvas{display:block}
 #ppt-status{font-size:10px;text-align:center;min-height:14px;width:100%}
 #dash-foot{padding:5px 14px;font-size:10px;color:#6b7280;border-top:1px solid #21262d;background:#0d1117;flex-shrink:0;min-height:24px}
 
+/* ── FILTROS BAR (compartida: Inventario/Operaciones) ─────────── */
+.fbar{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid #21262d;flex-shrink:0;flex-wrap:wrap;align-items:center;background:#0d1117}
+.fbar input[type=text]{flex:1;min-width:180px;background:#161b22;border:1px solid #30363d;border-radius:7px;padding:7px 12px;color:#e6edf3;font-family:inherit;font-size:11.5px}
+.fbar input[type=text]:focus{outline:none;border-color:#58a6ff}
+.fbar select{background:#161b22;border:1px solid #30363d;border-radius:7px;padding:7px 10px;color:#e6edf3;font-family:inherit;font-size:11.5px;cursor:pointer}
+.fbar-count{font-size:10.5px;color:#6b7280;white-space:nowrap;padding:0 4px}
+.fbar-count b{color:#e6edf3}
+.vt-toggle{display:flex;background:#161b22;border:1px solid #30363d;border-radius:7px;overflow:hidden}
+.vt-btn{padding:6px 12px;border:none;background:transparent;color:#6b7280;cursor:pointer;font-family:inherit;font-size:11px;font-weight:600}
+.vt-btn.active{background:#1f6feb;color:#fff}
+
+/* ── TAB INVENTARIO ──────────────────────────────────────────── */
+#inv-body{flex:1;display:flex;overflow:hidden;min-height:0}
+#inv-tbl-wrap{flex:1;overflow-y:auto;padding:0 16px}
+#inv-tbl-wrap::-webkit-scrollbar{width:4px}
+#inv-tbl-wrap::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+#tbl-inv{width:100%;border-collapse:collapse;font-size:11px}
+#tbl-inv th{background:#1f2937;color:#8b949e;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;text-align:left;position:sticky;top:0;z-index:1;white-space:nowrap;cursor:pointer}
+#tbl-inv th:hover{color:#e6edf3}
+#tbl-inv td{padding:6px 8px;border-bottom:1px solid #1f2937;vertical-align:middle;white-space:nowrap}
+#tbl-inv tr{cursor:pointer}
+#tbl-inv tr:hover td{background:#1c2128}
+.inv-tag{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700}
+.inv-tag.term{background:#22c55e22;color:#22c55e}
+.inv-tag.inter{background:#58a6ff22;color:#58a6ff}
+.inv-tag.dist{background:#f59e0b22;color:#f59e0b}
+.inv-tag.noc{background:#a855f722;color:#a855f7}
+.inv-alarm{color:#ef4444;font-weight:700}
+.inv-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700}
+.inv-badge.ok{background:#22c55e22;color:#22c55e}
+.inv-badge.sinUbic{background:#f59e0b22;color:#f59e0b}
+.inv-badge.sinInv{background:#6b728033;color:#9ca3af}
+.inv-badge.Critical{background:#ef444422;color:#ef4444}
+.inv-badge.Major{background:#f59e0b22;color:#f59e0b}
+.inv-ver-btn{padding:3px 11px;border-radius:6px;border:1px solid #374151;background:#1f2937;color:#8b949e;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600}
+.inv-ver-btn:hover{background:#374151;color:#e6edf3}
+#inv-detail{width:320px;min-width:320px;border-left:1px solid #21262d;padding:0;display:none;flex-direction:column;overflow-y:auto}
+#inv-detail.open{display:flex}
+#inv-detail::-webkit-scrollbar{width:4px}
+#inv-detail::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+#invd-hdr{padding:14px 16px;background:linear-gradient(135deg,#1a2332,#0f172a);border-bottom:1px solid #21262d;position:relative}
+#invd-hdr h3{font-size:14px;color:#58a6ff;font-weight:700}
+#invd-hdr p{font-size:10px;color:#6b7280;margin-top:3px;font-family:'Courier New',monospace}
+#invd-close{position:absolute;top:10px;right:10px;background:none;border:none;color:#6b7280;cursor:pointer;font-size:15px;padding:3px 7px;border-radius:4px}
+#invd-close:hover{background:#1f2937;color:#e6edf3}
+.invd-sec{padding:12px 16px;border-bottom:1px solid #1f2937}
+.invd-sec h4{font-size:9.5px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.invd-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.invd-f{background:#0d1117;border-radius:7px;padding:7px 9px;border:1px solid #21262d}
+.invd-f .fl{font-size:8.5px;color:#6b7280;text-transform:uppercase;letter-spacing:.4px}
+.invd-f .fv{font-size:11.5px;color:#e6edf3;font-weight:600;margin-top:2px}
+.eq-section{background:#0d1117;border:1px solid #21262d;border-radius:8px;margin-bottom:6px;overflow:hidden}
+.eq-section-hdr{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;cursor:pointer;user-select:none}
+.eq-section-hdr:hover{background:#161b22}
+.eq-section-title{font-size:11px;font-weight:700;color:#e6edf3;display:flex;align-items:center;gap:6px}
+.eq-cat-icon{font-size:12px}
+.eq-section-badge{color:#6b7280;font-weight:600;font-size:10px}
+.eq-section-lc{color:#a855f7;font-size:9.5px;white-space:nowrap}
+.eq-section-arrow{color:#6b7280;font-size:9px;transition:transform .15s}
+.eq-section-body{max-height:0;overflow:hidden;transition:max-height .2s ease}
+.eq-section-body.open{max-height:600px;overflow-y:auto}
+.eq-section-body table{width:100%;border-collapse:collapse;font-size:10px}
+.eq-section-body th{background:#161b22;color:#6b7280;font-size:8.5px;text-transform:uppercase;letter-spacing:.3px;padding:5px 8px;text-align:left;position:sticky;top:0}
+.eq-section-body td{padding:5px 8px;border-top:1px solid #1f2937;color:#cbd5e1}
+.eq-section-body .sn-chip{font-family:'Courier New',monospace;font-size:9px;color:#94a3b8}
+.eq-section-body .idx{color:#4b5563}
+.invd-alarm-item{background:#1a0e0e;border:1px solid #7f1d1d;border-radius:7px;padding:7px 9px;margin-bottom:5px}
+.invd-alarm-item .sev{font-size:9px;font-weight:700;color:#ef4444}
+.invd-alarm-item .ttl{font-size:11px;color:#e6edf3;margin-top:2px}
+.invd-alarm-item .ts{font-size:9px;color:#6b7280;margin-top:2px;font-family:'Courier New',monospace}
+#invd-btn-log{width:calc(100% - 32px);margin:12px 16px;padding:9px;background:#0d1b31;color:#58a6ff;border:1px solid #1f4a8a;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;font-family:inherit}
+#invd-btn-log:hover{background:#1f4a8a;color:#fff}
+
+/* ── TAB OPERACIONES ─────────────────────────────────────────── */
+#ops-summary{display:flex;gap:8px;padding:8px 16px;flex-shrink:0}
+.ops-chip{font-size:10.5px;padding:4px 11px;border-radius:14px;font-weight:700}
+.ops-chip.crit{background:#ef444422;color:#ef4444;border:1px solid #ef444455}
+.ops-chip.maj{background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55}
+.ops-chip.warn{background:#58a6ff22;color:#58a6ff;border:1px solid #58a6ff55}
+#ops-body{flex:1;overflow-y:auto;padding:0 16px 14px}
+#ops-body::-webkit-scrollbar{width:4px}
+#ops-body::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+#tbl-ops{width:100%;border-collapse:collapse;font-size:11px}
+#tbl-ops th{background:#1f2937;color:#8b949e;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;text-align:left;position:sticky;top:0;z-index:1;white-space:nowrap}
+#tbl-ops td{padding:6px 8px;border-bottom:1px solid #1f2937;vertical-align:middle}
+#tbl-ops tr:hover td{background:#1c2128}
+.sev-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700}
+.sev-badge.Critical{background:#ef444422;color:#ef4444}
+.sev-badge.Major{background:#f59e0b22;color:#f59e0b}
+.sev-badge.Warning{background:#58a6ff22;color:#58a6ff}
+#ops-cards{display:none;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;padding-bottom:10px}
+#ops-cards.active{display:grid}
+#tbl-ops.hidden{display:none}
+.ops-card{background:#161b22;border:1px solid #21262d;border-radius:9px;padding:11px 13px}
+.ops-card .oc-ttl{font-size:11.5px;font-weight:700;color:#e6edf3;margin-bottom:6px}
+.ops-card .oc-row{font-size:10px;color:#8b949e;display:flex;gap:5px;margin-top:3px}
+.ops-card .oc-row .lb{color:#6b7280;min-width:52px}
+
+/* ── TAB LOGÍSTICA ───────────────────────────────────────────── */
+#log-toolbar{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #21262d;flex-shrink:0}
+#log-toolbar h2{font-size:13px;color:#e6edf3}
+#btn-log-new{padding:7px 16px;background:#0d1b31;color:#58a6ff;border:1px solid #1f4a8a;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;font-family:inherit}
+#btn-log-new:hover{background:#1f4a8a;color:#fff}
+#log-body{flex:1;overflow-y:auto;padding:12px 16px}
+#log-body::-webkit-scrollbar{width:4px}
+#log-body::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+.log-item{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start}
+.log-icon{width:34px;height:34px;border-radius:8px;background:#0d1b31;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.log-info{flex:1;min-width:0}
+.log-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.log-site{font-size:12px;font-weight:700;color:#e6edf3}
+.log-date{font-size:10px;color:#6b7280;font-family:'Courier New',monospace}
+.log-meta{font-size:10.5px;color:#8b949e;margin-top:3px}
+.log-meta b{color:#cbd5e1}
+.log-obs{font-size:10.5px;color:#6b7280;margin-top:4px;font-style:italic}
+.log-action-tag{font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;flex-shrink:0}
+.log-action-tag.Cambio{background:#f59e0b22;color:#f59e0b}
+.log-action-tag.Instalación{background:#22c55e22;color:#22c55e}
+.log-action-tag.Retiro{background:#ef444422;color:#ef4444}
+.log-action-tag.Revisión{background:#58a6ff22;color:#58a6ff}
+.log-action-tag.Inspección{background:#a855f722;color:#a855f7}
+#log-empty{text-align:center;color:#6b7280;padding:50px 20px;font-style:italic}
+/* Modal Logística */
+#modal-log{position:fixed;inset:0;background:#00000080;z-index:5000;display:none;align-items:center;justify-content:center}
+#modal-log.open{display:flex}
+#modlog-box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:22px 24px;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto}
+#modlog-box h3{font-size:13px;color:#e6edf3;margin-bottom:14px}
+.ml-row{margin-bottom:11px}
+.ml-row label{display:block;font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.ml-inp,.ml-sel,.ml-txt{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:7px;padding:8px 10px;color:#e6edf3;font-family:inherit;font-size:11.5px}
+.ml-txt{resize:vertical;min-height:55px}
+.ml-inp:focus,.ml-sel:focus,.ml-txt:focus{outline:none;border-color:#58a6ff}
+.ml-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ── VISTA GLOBAL EQUIPOS (modal cruce inventario × logística) ── */
+#bulk-overlay{display:none;position:fixed;inset:0;background:#000000c0;z-index:6000;align-items:flex-start;justify-content:center;padding-top:26px;overflow-y:auto}
+#bulk-overlay.open{display:flex}
+#bulk-modal{background:#161b22;border:1px solid #30363d;border-radius:12px;width:95vw;max-width:1360px;padding:18px 20px;margin-bottom:30px}
+#bulk-title{font-size:14px;font-weight:700;color:#e6edf3;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+#bulk-close{background:transparent;border:none;color:#6b7280;font-size:20px;cursor:pointer;line-height:1}
+#bulk-close:hover{color:#e6edf3}
+#bulk-note{font-size:10.5px;color:#6b7280;margin-bottom:10px;background:#0d1117;border:1px solid #21262d;border-radius:7px;padding:6px 11px}
+#bulk-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+#bulk-toolbar input,#bulk-toolbar select{background:#0d1117;border:1px solid #30363d;border-radius:7px;padding:7px 11px;color:#e6edf3;font-family:inherit;font-size:11.5px}
+#bulk-toolbar input{flex:1;min-width:200px}
+#bulk-toolbar select{cursor:pointer}
+#bulk-toolbar button{padding:7px 14px;border-radius:7px;border:1px solid #374151;background:#1f2937;color:#8b949e;cursor:pointer;font-family:inherit;font-size:11px;font-weight:600}
+#bulk-toolbar button:hover{background:#374151;color:#e6edf3}
+#bulk-count{font-size:10.5px;color:#6b7280;margin-bottom:8px}
+#bulk-table-wrap{max-height:64vh;overflow:auto}
+#bulk-table-wrap::-webkit-scrollbar{width:5px;height:5px}
+#bulk-table-wrap::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+#bulk-table{width:100%;border-collapse:collapse;font-size:10.8px}
+#bulk-table th{background:#1f2937;color:#8b949e;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;text-align:left;position:sticky;top:0;z-index:1;white-space:nowrap}
+#bulk-table td{padding:6px 8px;border-bottom:1px solid #1f2937;white-space:nowrap}
+#bulk-table tr:hover td{background:#1c2128}
+.bulk-sn{font-family:'Courier New',monospace;font-size:10px;background:#0d1117;padding:2px 6px;border-radius:4px;color:#94a3b8}
+.bulk-link{color:#58a6ff;cursor:pointer;text-decoration:none}
+.bulk-link:hover{text-decoration:underline}
+.bulk-cambio{font-size:10px;color:#a855f7}
+
 /* ── ALERTA NETECO COMM (solo operador) ──────────────────────── */
 #btn-net-alert{display:none;align-items:center;gap:6px;padding:4px 11px;border-radius:7px;border:1px solid #374151;background:#1f2937;color:#6b7280;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit;white-space:nowrap;transition:.15s}
 #btn-net-alert.activo{display:flex;background:#1c1107;border-color:#f59e0b;color:#f59e0b;animation:net-pulse 2s ease-in-out infinite}
 @keyframes net-pulse{0%,100%{box-shadow:0 0 0 0 #f59e0b33}50%{box-shadow:0 0 0 6px #f59e0b00}}
 #net-alert-count{background:#f59e0b;color:#0d1117;border-radius:9px;font-size:9px;font-weight:800;padding:1px 6px;min-width:16px;text-align:center}
+#btn-vista-global{padding:5px 12px;border-radius:7px;border:1px solid #1f4a8a;background:#0d1b31;color:#58a6ff;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;white-space:nowrap;transition:.15s}
+#btn-vista-global:hover{background:#1f4a8a;color:#fff}
 /* Panel deslizante */
 #panel-net-alert{position:fixed;top:42px;right:0;width:375px;max-height:calc(100vh - 42px);background:#161b22;border-left:1px solid #f59e0b55;border-bottom:1px solid #f59e0b33;z-index:4000;display:none;flex-direction:column;box-shadow:-8px 4px 28px #000000bb;transform:translateX(10px);opacity:0;transition:transform .2s ease,opacity .2s ease}
 #panel-net-alert.open{display:flex;transform:translateX(0);opacity:1}
@@ -195,6 +361,9 @@ canvas{display:block}
 <nav id="nav">
   <button class="tb active" onclick="switchTab('sim')">🌐 Simulador</button>
   <button class="tb" onclick="switchTab('dash')">📊 Dashboard</button>
+  <button class="tb" onclick="switchTab('ops')">🔴 Alarmas</button>
+  <button class="tb" onclick="switchTab('inv')">📡 Inventario</button>
+  <button class="tb" onclick="switchTab('log')">🔧 Logística</button>
   <div id="di">
     <span class="di-item" id="di-bd">⏳ Cargando BD...</span>
     <span class="di-item" id="di-inf">⏳ Infinera...</span>
@@ -204,6 +373,9 @@ canvas{display:block}
   <button id="btn-net-alert" onclick="togglePanelAlerta(event)"
     title="Nodos con alarma 'Communication Between NMS And NE Is Abnormal' en NetEco que NO aparecen en Infinera — Solo para evaluación del operador">
     🔔 NetEco Comm &nbsp;<span id="net-alert-count">0</span>
+  </button>
+  <button id="btn-vista-global" onclick="abrirBulk()" title="Ver y exportar todo el equipamiento de la red, cruzado con los últimos cambios de Logística">
+    📋 Vista Global Equipos
   </button>
 </nav>
 
@@ -323,6 +495,210 @@ canvas{display:block}
   <div id="dash-foot">Esperando datos...</div>
 </div>
 
+<!-- TAB 3: INVENTARIO -->
+<div id="tab-inv" class="tab">
+  <div class="fbar">
+    <input type="text" id="inv-search" placeholder="🔍 Código, nombre, SN, modelo..." oninput="filtrarInventario()">
+    <select id="inv-f-sector" onchange="filtrarInventario()"><option value="">— Sector —</option></select>
+    <select id="inv-f-dist" onchange="filtrarInventario()"><option value="">— Distrito —</option></select>
+    <select id="inv-f-energia" onchange="filtrarInventario()">
+      <option value="">— Energía —</option>
+      <option value="ELECTRICA">ELECTRICA</option>
+      <option value="SOLAR">SOLAR</option>
+    </select>
+    <select id="inv-f-ge" onchange="filtrarInventario()">
+      <option value="">— GE —</option>
+      <option value="SI">SI</option>
+      <option value="NO">NO</option>
+    </select>
+    <select id="inv-f-estado" onchange="filtrarInventario()">
+      <option value="">— Estado —</option>
+      <option value="CON INVENTARIO">CON INVENTARIO</option>
+      <option value="SIN INVENTARIO">SIN INVENTARIO</option>
+    </select>
+    <button class="vt-btn" style="background:#1f2937;border:1px solid #374151;border-radius:7px" onclick="exportarInventarioCSV()">⬇ CSV</button>
+    <span class="fbar-count"><b id="inv-count">0</b> sitios</span>
+  </div>
+  <div id="inv-body">
+    <div id="inv-tbl-wrap">
+      <table id="tbl-inv">
+        <thead><tr>
+          <th onclick="sortInv('id')">Código</th>
+          <th onclick="sortInv('nombre')">Nodo</th>
+          <th onclick="sortInv('transporte')">Sector</th>
+          <th onclick="sortInv('dist')">Distrito</th>
+          <th onclick="sortInv('energia')">Energía</th>
+          <th onclick="sortInv('ge')" class="tc">GE</th>
+          <th onclick="sortInv('total_eq')" class="tc">Equipos</th>
+          <th onclick="sortInv('rect')" class="tc">Rect.</th>
+          <th onclick="sortInv('aa')" class="tc">AA</th>
+          <th onclick="sortInv('bat_litio')" class="tc">Bat.Li</th>
+          <th onclick="sortInv('solar')" class="tc">Solar</th>
+          <th onclick="sortInv('alarmas')" class="tc">Alarmas</th>
+          <th onclick="sortInv('estado_inv')">Estado</th>
+          <th>Detalle</th>
+        </tr></thead>
+        <tbody id="tbl-inv-body"></tbody>
+      </table>
+    </div>
+    <div id="inv-detail"></div>
+  </div>
+</div>
+
+<!-- TAB 4: OPERACIONES -->
+<div id="tab-ops" class="tab">
+  <div class="fbar">
+    <input type="text" id="ops-search" placeholder="🔍 Nodo, sector, tipo de avería..." oninput="filtrarOperaciones()">
+    <select id="ops-f-sev" onchange="filtrarOperaciones()">
+      <option value="">— Severidad —</option>
+      <option value="Critical">Critical</option>
+      <option value="Major">Major</option>
+      <option value="Warning">Warning</option>
+    </select>
+    <select id="ops-f-tipo" onchange="filtrarOperaciones()"><option value="">— Tipo de avería —</option></select>
+    <select id="ops-f-sector" onchange="filtrarOperaciones()"><option value="">— Sector —</option></select>
+    <div class="vt-toggle">
+      <button class="vt-btn active" id="vt-tabla" onclick="setVistaOps('tabla')">Vista tabla</button>
+      <button class="vt-btn" id="vt-tarjetas" onclick="setVistaOps('tarjetas')">Vista tarjetas</button>
+    </div>
+  </div>
+  <div id="ops-summary">
+    <span class="ops-chip crit" id="ops-chip-crit">Critical: 0</span>
+    <span class="ops-chip maj" id="ops-chip-maj">Major: 0</span>
+    <span class="ops-chip warn" id="ops-chip-warn">Warning: 0</span>
+    <span class="fbar-count"><b id="ops-count">0</b> alarmas totales</span>
+  </div>
+  <div id="ops-body">
+    <table id="tbl-ops">
+      <thead><tr>
+        <th>Severidad</th><th>Tipo avería</th><th>Nodo</th><th>Código</th>
+        <th>Sector</th><th>Dispositivo</th><th>Ocurrencia</th>
+      </tr></thead>
+      <tbody id="tbl-ops-body"></tbody>
+    </table>
+    <div id="ops-cards"></div>
+  </div>
+</div>
+
+<!-- TAB 5: LOGÍSTICA -->
+<div id="tab-log" class="tab">
+  <div id="log-toolbar">
+    <h2>🔧 Bitácora de equipos — cambios, instalaciones y retiros</h2>
+    <button id="btn-log-new" onclick="abrirModalLog()">➕ Nuevo registro</button>
+  </div>
+  <div id="log-body">
+    <div id="log-empty">Cargando bitácora...</div>
+  </div>
+</div>
+
+<!-- Modal Vista Global Equipos -->
+<div id="bulk-overlay" onclick="if(event.target.id==='bulk-overlay')cerrarBulk()">
+  <div id="bulk-modal">
+    <div id="bulk-title">
+      📋 Vista Global de Equipamiento
+      <button id="bulk-close" onclick="cerrarBulk()">✕</button>
+    </div>
+    <div id="bulk-note">
+      ℹ️ Mostrando solo equipos con <strong>existencia confirmada (Sí)</strong>.
+      La columna <strong>Últ. Cambio</strong> se actualiza en vivo con los registros de la pestaña 🔧 Logística.
+    </div>
+    <div id="bulk-toolbar">
+      <input type="text" id="bulk-search" placeholder="🔍 Nodo, FRU, modelo, N° serie..." oninput="renderBulk()">
+      <select id="bulk-sector" onchange="renderBulk()"><option value="">— Sector —</option></select>
+      <select id="bulk-cat" onchange="renderBulk()">
+        <option value="">— Categoría —</option>
+        <option>Rectificador</option><option>Aire Acondicionado</option>
+        <option>Bateria Litio</option><option>Bateria</option>
+        <option>Gabinete Hibrido (PowerRack)</option><option>Controlador ECC500</option>
+        <option>Adaptador Solar (PV)</option><option>Inversor</option>
+        <option>SSU</option><option>DCDB</option><option>Tarjeta IO</option><option>Otros</option>
+      </select>
+      <select id="bulk-fru" onchange="renderBulk()"><option value="">— FRU/Modelo —</option></select>
+      <button onclick="exportarBulkCSV()">⬇ CSV</button>
+    </div>
+    <div id="bulk-count">0 equipos</div>
+    <div id="bulk-table-wrap">
+      <table id="bulk-table">
+        <thead><tr>
+          <th>Código</th><th>Nodo</th><th>Sector</th><th>Distrito</th>
+          <th>Categoría</th><th>FRU</th><th>Board</th><th>N° Serie</th>
+          <th>Fabricante</th><th>Fab. Fecha</th><th>Últ. Cambio</th>
+        </tr></thead>
+        <tbody id="bulk-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Logística -->
+<div id="modal-log">
+  <div id="modlog-box">
+    <h3>➕ Nuevo registro de logística</h3>
+    <div class="ml-row">
+      <label>Sitio</label>
+      <input class="ml-inp" id="ml-sitio" list="ml-sitio-list" placeholder="Código o nombre del sitio...">
+      <datalist id="ml-sitio-list"></datalist>
+    </div>
+    <div class="ml-grid2">
+      <div class="ml-row">
+        <label>Categoría de equipo</label>
+        <select class="ml-sel" id="ml-cat">
+          <option>Rectificador</option>
+          <option>Aire Acondicionado</option>
+          <option>Bateria Litio</option>
+          <option>Bateria</option>
+          <option>Gabinete Hibrido (PowerRack)</option>
+          <option>Controlador ECC500</option>
+          <option>Adaptador Solar (PV)</option>
+          <option>Inversor</option>
+          <option>SSU</option>
+          <option>DCDB</option>
+          <option>Tarjeta IO</option>
+          <option>Otros</option>
+        </select>
+      </div>
+      <div class="ml-row">
+        <label>Acción</label>
+        <select class="ml-sel" id="ml-accion">
+          <option>Cambio</option>
+          <option>Instalación</option>
+          <option>Retiro</option>
+          <option>Revisión</option>
+          <option>Inspección</option>
+        </select>
+      </div>
+    </div>
+    <div class="ml-grid2">
+      <div class="ml-row">
+        <label>FRU / Modelo</label>
+        <input class="ml-inp" id="ml-fru" placeholder="Ej. R4850N2">
+      </div>
+      <div class="ml-row">
+        <label>N° Serie</label>
+        <input class="ml-inp" id="ml-sn" placeholder="Ej. 2102310RMMD...">
+      </div>
+    </div>
+    <div class="ml-grid2">
+      <div class="ml-row">
+        <label>Fecha</label>
+        <input class="ml-inp" id="ml-fecha" type="date">
+      </div>
+      <div class="ml-row">
+        <label>Técnico</label>
+        <input class="ml-inp" id="ml-tecnico" placeholder="Nombre del técnico">
+      </div>
+    </div>
+    <div class="ml-row">
+      <label>Observaciones (opcional)</label>
+      <textarea class="ml-txt" id="ml-obs" placeholder="Detalle del trabajo realizado..."></textarea>
+    </div>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-sec" onclick="cerrarModalLog()">Cancelar</button>
+      <button class="mbtn mbtn-pri" onclick="guardarRegistroLog()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════════ -->
 <!-- PANEL ALERTA NETECO COMM — solo para evaluación operador  -->
 <!-- No afecta métricas, dashboard, ni PPT                     -->
@@ -388,6 +764,7 @@ let modo='corte',sc=1,ox=80,oy=120,drag=false,lx=0,ly=0,hov=null;
 // NTD inverso: code → topologyId (se construye una vez al cargar datos)
 let ntd_rev=null;
 let nodesGlobal={};       // nodos desde BD con campos infinera/neteco
+let neteco_map_global={}; // {SITE_NAME_UPPER: codigo} — reutilizado por tab Operaciones
 let resultados_global=null;
 let cargando=false;
 // Overrides: cargados desde Drive (overrides.json)
@@ -398,6 +775,19 @@ let blinkInterval=null;
 let modal_current_root=null; // root code being edited
 let panel_net_alert_open=false;   // estado panel alerta NetEco
 let alertas_neteco_comm_data=[];  // datos de la última detección
+
+// ── ESTADO — INVENTARIO / OPERACIONES / LOGÍSTICA (v7) ──────────────
+let inv_sitios_global=[];      // BD_inventario_sitios.json → sitios[]
+let inv_equipos_global={};     // BD_inventario_equipos.json → equipos{codigo:{rows:[]}}
+let inv_meta_global={};        // {version, fuente, total}
+let inv_detail_open=null;      // código del sitio abierto en el panel detalle
+
+let ops_alarms_global=[];      // alarmas NetEco crudas (para tab Operaciones)
+let ops_vista='tabla';         // 'tabla' | 'tarjetas'
+
+let logistica_global=[];       // registros[] de logistica.json
+let logistica_cargada=false;
+let ml_sitio_prefill=null;     // sitio preseleccionado al abrir modal desde detalle
 const HOY=()=>new Date().toISOString().slice(0,10); // "YYYY-MM-DD"
 
 // ═══════════════════════════════════════════════════════════════════
@@ -673,10 +1063,13 @@ function fitView(){
 // ═══════════════════════════════════════════════════════════════════
 function switchTab(id){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['sim','dash'][i]===id));
+  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['sim','dash','ops','inv','log'][i]===id));
   document.getElementById('tab-'+id).classList.add('active');
   if(id==='sim'){setTimeout(()=>{resize();draw();},30);}
   if(id==='dash'&&resultados_global){actualizarDashboard(resultados_global);}
+  if(id==='inv'&&!inv_sitios_global.length){cargarInventario();}
+  if(id==='ops'&&!ops_alarms_global.length){cargarOperaciones();}
+  if(id==='log'&&!logistica_cargada){cargarLogistica();}
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1106,6 +1499,7 @@ async function cargarTodo(manual=false){
     if(!rBD.ok)throw new Error('Error al leer BD: '+(rBD.error||'?'));
     if(!rInf.ok)throw new Error('Error al leer Infinera: '+(rInf.error||'?'));
     const{nodes,infinera_map,neteco_map}=parseBD(rBD.data);
+    neteco_map_global=neteco_map;   // expuesto para tab Operaciones (parseNetEcoRaw)
     const inf_alarms=parseInfinera(rInf.data,infinera_map);
 
     // 4. NetEco (opcional — solo para causa raíz)
@@ -1692,10 +2086,631 @@ function actualizarAlertasNetEco(alertas){
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  TAB INVENTARIO — carga desde subcarpeta Drive (inv_sitios / inv_equipos)
+// ═══════════════════════════════════════════════════════════════════
+async function cargarInventario(){
+  const tbody=document.getElementById('tbl-inv-body');
+  tbody.innerHTML='<tr><td colspan="14" class="no-data">⏳ Cargando inventario desde Drive...</td></tr>';
+  try{
+    const[rSitios,rEquipos]=await Promise.all([prx('get','inv_sitios'),prx('get','inv_equipos')]);
+    if(!rSitios.ok)throw new Error(rSitios.error||'No se pudo leer inv_sitios');
+    if(!rEquipos.ok)throw new Error(rEquipos.error||'No se pudo leer inv_equipos');
+
+    const bS=JSON.parse(atob(rSitios.data));
+    const bE=JSON.parse(atob(rEquipos.data));
+    inv_sitios_global=bS.sitios||[];
+    inv_equipos_global=bE.equipos||{};
+    inv_meta_global={version:bS.version,fuente:bS.fuente,total:bS.total};
+
+    // Poblar filtros dinámicos: Sector y Distrito
+    const sectores=[...new Set(inv_sitios_global.map(s=>s.transporte).filter(Boolean))].sort();
+    document.getElementById('inv-f-sector').innerHTML='<option value="">— Sector —</option>'+sectores.map(s=>`<option value="${s}">${s}</option>`).join('');
+    const distritos=[...new Set(inv_sitios_global.map(s=>s.dist).filter(Boolean))].sort();
+    document.getElementById('inv-f-dist').innerHTML='<option value="">— Distrito —</option>'+distritos.map(d=>`<option value="${d}">${d}</option>`).join('');
+
+    // Datalist para modal logística
+    const dl=document.getElementById('ml-sitio-list');
+    dl.innerHTML=inv_sitios_global.map(s=>`<option value="${s.id} — ${s.nombre}">`).join('');
+
+    renderInventario(inv_sitios_global);
+  }catch(err){
+    tbody.innerHTML=`<tr><td colspan="14" class="no-data">❌ ${err.message}</td></tr>`;
+  }
+}
+
+let inv_sort={col:null,dir:1};
+
+function sortInv(col){
+  if(inv_sort.col===col)inv_sort.dir*=-1;
+  else{inv_sort.col=col;inv_sort.dir=1;}
+  filtrarInventario();
+}
+
+function renderInventario(lista){
+  const tbody=document.getElementById('tbl-inv-body');
+  document.getElementById('inv-count').textContent=lista.length+' sitios';
+  if(!lista.length){
+    tbody.innerHTML='<tr><td colspan="14" class="no-data">Sin resultados.</td></tr>';
+    return;
+  }
+  tbody.innerHTML=lista.map(s=>{
+    const geHtml=s.ge==='SI'?'<span style="color:#22c55e">✔</span>':'–';
+    const alarmHtml=s.alarmas>0?`<span class="inv-badge ${s.alarmas_criticas>0?'Critical':'Major'}">${s.alarmas}</span>`:'–';
+    const estado=s.estado_inv||'';
+    const estadoHtml=estado==='CON INVENTARIO'
+      ?'<span class="inv-badge ok">✔ OK</span>'
+      :estado.includes('UBIC')?'<span class="inv-badge sinUbic">Sin Ubic.</span>':'<span class="inv-badge sinInv">Sin Inv.</span>';
+    return`<tr>
+      <td style="color:#58a6ff;font-family:'Courier New',monospace"><strong>${s.id}</strong></td>
+      <td class="tbold">${s.nombre}</td>
+      <td>${s.transporte||'—'}</td>
+      <td>${s.dist||'—'}</td>
+      <td>${s.energia||'—'}</td>
+      <td class="tc">${geHtml}</td>
+      <td class="tc"><strong>${s.total_eq??'—'}</strong></td>
+      <td class="tc">${s.rect||'–'}</td>
+      <td class="tc">${s.aa||'–'}</td>
+      <td class="tc">${s.bat_litio||'–'}</td>
+      <td class="tc">${s.solar||'–'}</td>
+      <td class="tc">${alarmHtml}</td>
+      <td>${estadoHtml}</td>
+      <td><button class="inv-ver-btn" onclick="abrirDetalleSitio('${s.id}')">Ver</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function filtrarInventario(){
+  const q=(document.getElementById('inv-search').value||'').toUpperCase();
+  const fSector=document.getElementById('inv-f-sector').value;
+  const fDist=document.getElementById('inv-f-dist').value;
+  const fEnergia=document.getElementById('inv-f-energia').value;
+  const fGe=document.getElementById('inv-f-ge').value;
+  const fEstado=document.getElementById('inv-f-estado').value;
+  let filtrado=inv_sitios_global.filter(s=>{
+    if(fSector&&s.transporte!==fSector)return false;
+    if(fDist&&s.dist!==fDist)return false;
+    if(fEnergia&&s.energia!==fEnergia)return false;
+    if(fGe&&s.ge!==fGe)return false;
+    if(fEstado&&s.estado_inv!==fEstado)return false;
+    if(q){
+      const hay=`${s.id} ${s.nombre} ${s.transporte} ${s.dist}`.toUpperCase();
+      // también busca por número de serie dentro del equipamiento del sitio
+      const eq=inv_equipos_global[s.id];
+      const snHay=eq&&eq.rows?eq.rows.map(r=>r.sn||'').join(' ').toUpperCase():'';
+      if(!hay.includes(q)&&!snHay.includes(q))return false;
+    }
+    return true;
+  });
+  if(inv_sort.col){
+    const col=inv_sort.col,dir=inv_sort.dir;
+    filtrado=[...filtrado].sort((a,b)=>{
+      const va=a[col]??'',vb=b[col]??'';
+      if(typeof va==='number')return(va-vb)*dir;
+      return String(va).localeCompare(String(vb))*dir;
+    });
+  }
+  renderInventario(filtrado);
+}
+
+function exportarInventarioCSV(){
+  // Reaplica los mismos filtros activos para exportar exactamente lo que se ve en pantalla
+  const q=(document.getElementById('inv-search').value||'').toUpperCase();
+  const fSector=document.getElementById('inv-f-sector').value;
+  const fDist=document.getElementById('inv-f-dist').value;
+  const fEnergia=document.getElementById('inv-f-energia').value;
+  const fGe=document.getElementById('inv-f-ge').value;
+  const fEstado=document.getElementById('inv-f-estado').value;
+  const sites=inv_sitios_global.filter(s=>{
+    if(fSector&&s.transporte!==fSector)return false;
+    if(fDist&&s.dist!==fDist)return false;
+    if(fEnergia&&s.energia!==fEnergia)return false;
+    if(fGe&&s.ge!==fGe)return false;
+    if(fEstado&&s.estado_inv!==fEstado)return false;
+    if(q){
+      const hay=`${s.id} ${s.nombre} ${s.transporte} ${s.dist}`.toUpperCase();
+      if(!hay.includes(q))return false;
+    }
+    return true;
+  });
+  const headers=['Código','Nodo','Sector','Distrito','Provincia','Departamento','Energía','GE','Total Eq','Rectif','AA','Bat.Litio','Solar','Alarmas','Alarmas Críticas','Estado'];
+  const rows=sites.map(s=>[s.id,s.nombre,s.transporte,s.dist,s.prov,s.dept,s.energia,s.ge,s.total_eq,s.rect,s.aa,s.bat_litio,s.solar,s.alarmas,s.alarmas_criticas,s.estado_inv]);
+  const csv=[headers,...rows].map(r=>r.map(v=>v??'').join(',')).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='inventario_filtrado.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  VISTA GLOBAL EQUIPOS — cruce Inventario × Logística en vivo
+//  Solo equipos con existencia="Yes". Últ. Cambio se recalcula cada
+//  vez que se abre, tomando siempre el registro más reciente de
+//  logistica_global por (sitio_id + categoría).
+// ═══════════════════════════════════════════════════════════════════
+let allBulkRows=[];
+
+async function abrirBulk(){
+  const overlay=document.getElementById('bulk-overlay');
+  overlay.classList.add('open');
+  document.getElementById('bulk-body').innerHTML='<tr><td colspan="11" class="no-data">⏳ Cargando equipamiento...</td></tr>';
+
+  // Asegura que inventario y logística estén cargados (puede abrirse desde cualquier pestaña)
+  if(!inv_sitios_global.length) await cargarInventario();
+  if(!logistica_cargada) await cargarLogistica();
+
+  buildBulkRows();
+
+  const sectores=[...new Set(inv_sitios_global.map(s=>s.transporte).filter(Boolean))].sort();
+  document.getElementById('bulk-sector').innerHTML='<option value="">— Sector —</option>'+sectores.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const frus=[...new Set(allBulkRows.map(r=>r.fru).filter(Boolean))].sort();
+  document.getElementById('bulk-fru').innerHTML='<option value="">— FRU/Modelo —</option>'+frus.map(f=>`<option value="${f}">${f}</option>`).join('');
+
+  renderBulk();
+}
+
+function cerrarBulk(){document.getElementById('bulk-overlay').classList.remove('open');}
+
+function buildBulkRows(){
+  allBulkRows=[];
+  const siteMap={};
+  inv_sitios_global.forEach(s=>siteMap[s.id]=s);
+
+  for(const[sid,eq] of Object.entries(inv_equipos_global)){
+    if(!eq.rows)continue;
+    const site=siteMap[sid]||{};
+
+    // Último cambio por categoría — el más reciente de logistica_global para este sitio
+    const lastChanges={};
+    logistica_global.filter(e=>e.sitio_id===sid).forEach(e=>{
+      if(!lastChanges[e.categoria]||e.fecha>lastChanges[e.categoria].fecha){
+        lastChanges[e.categoria]=e;
+      }
+    });
+
+    for(const r of eq.rows){
+      // Filtro duro: solo existencia confirmada "Sí" (excluye "No" siempre)
+      if((r.exist||'').trim().toLowerCase()!=='yes')continue;
+
+      const lc=lastChanges[r.cat];
+      allBulkRows.push({
+        sid, nombre: site.nombre||sid, sector: site.transporte||'', dist: site.dist||'',
+        ...r,
+        ult_cambio: lc?`${lc.fecha} (${lc.accion})`:'–'
+      });
+    }
+  }
+}
+
+function renderBulk(){
+  const q=(document.getElementById('bulk-search').value||'').toLowerCase();
+  const sec=document.getElementById('bulk-sector').value;
+  const cat=document.getElementById('bulk-cat').value;
+  const fru=document.getElementById('bulk-fru').value;
+
+  const rows=allBulkRows.filter(r=>{
+    if(q&&![r.sid,r.nombre,r.sector,r.dist,r.fru,r.board,r.sn,r.cat].join(' ').toLowerCase().includes(q))return false;
+    if(sec&&r.sector!==sec)return false;
+    if(cat&&r.cat!==cat)return false;
+    if(fru&&r.fru!==fru)return false;
+    return true;
+  });
+
+  const sitiosUnicos=new Set(rows.map(r=>r.sid)).size;
+  document.getElementById('bulk-count').textContent=`${rows.length} equipos de ${sitiosUnicos} sitios`;
+
+  const body=document.getElementById('bulk-body');
+  if(!rows.length){
+    body.innerHTML='<tr><td colspan="11" class="no-data">Sin resultados.</td></tr>';
+    return;
+  }
+  body.innerHTML=rows.slice(0,800).map(r=>`<tr>
+    <td style="color:#58a6ff;font-family:'Courier New',monospace"><strong>${r.sid}</strong></td>
+    <td><a class="bulk-link" onclick="cerrarBulk();switchTab('inv');setTimeout(()=>abrirDetalleSitio('${r.sid}'),50)">${r.nombre}</a></td>
+    <td>${r.sector}</td>
+    <td>${r.dist}</td>
+    <td><span class="inv-badge ok" style="background:#58a6ff22;color:#58a6ff">${r.cat}</span></td>
+    <td><strong>${r.fru||'–'}</strong></td>
+    <td style="font-size:9.5px;color:#6b7280">${r.board||'–'}</td>
+    <td><span class="bulk-sn">${r.sn||'–'}</span></td>
+    <td>${r.vendor||'–'}</td>
+    <td>${r.mfg||'–'}</td>
+    <td class="bulk-cambio">${r.ult_cambio}</td>
+  </tr>`).join('');
+
+  if(rows.length>800){
+    document.getElementById('bulk-count').textContent+=' (mostrando primeros 800 — filtra para ver más)';
+  }
+}
+
+function exportarBulkCSV(){
+  const q=(document.getElementById('bulk-search').value||'').toLowerCase();
+  const sec=document.getElementById('bulk-sector').value;
+  const cat=document.getElementById('bulk-cat').value;
+  const fru=document.getElementById('bulk-fru').value;
+  const rows=allBulkRows.filter(r=>{
+    if(q&&![r.sid,r.nombre,r.sector,r.fru,r.sn,r.cat].join(' ').toLowerCase().includes(q))return false;
+    if(sec&&r.sector!==sec)return false;
+    if(cat&&r.cat!==cat)return false;
+    if(fru&&r.fru!==fru)return false;
+    return true;
+  });
+  const h=['Código','Nodo','Sector','Distrito','Categoría','FRU','Board','N° Serie','Slot','Fabricante','Fecha Fab.','Existencia','Último Cambio'];
+  const data=rows.map(r=>[r.sid,r.nombre,r.sector,r.dist,r.cat,r.fru,r.board,r.sn,r.slot||'',r.vendor,r.mfg,r.exist,r.ult_cambio]);
+  const csv=[h,...data].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='inventario_global_equipos.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Acordeón de equipamiento por categoría (usado en el panel de detalle) ──
+function renderEqSection(cat,items,siteId){
+  const CAT_ICONS={
+    'Rectificador':'⚡','Aire Acondicionado':'❄️','Bateria Litio':'🔋','Bateria':'🔋',
+    'Gabinete Hibrido (PowerRack)':'🗄️','Controlador ECC500':'🖥️','Adaptador Solar (PV)':'☀️',
+    'Modulo Solar (PV)':'☀️','Inversor':'🔄','SSU':'🔌','DCDB':'📦','Tarjeta IO':'🔧','Otros':'📋'
+  };
+  const icon=CAT_ICONS[cat]||'📋';
+  const id='eq-'+siteId+'-'+cat.replace(/\s/g,'_').replace(/[()\/]/g,'');
+
+  // Último cambio para esta categoría en este sitio (desde logistica_global, en vivo)
+  const lastChange=[...logistica_global].filter(e=>e.sitio_id===siteId&&e.categoria===cat)
+    .sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+  const lcBadge=lastChange?`<span class="eq-section-lc">Últ. cambio: ${lastChange.fecha} (${lastChange.accion})</span>`:'';
+
+  const isRect=cat==='Rectificador';
+  const thead=`<tr>
+    <th>#</th><th>FRU / Board</th>${isRect?'<th>Slot</th>':''}
+    <th>N° Serie</th><th>Fabricante</th><th>Fecha Fab.</th><th>Existencia</th>
+  </tr>`;
+  const tbody=items.map((r,i)=>`<tr>
+    <td class="idx">${i+1}</td>
+    <td><strong>${r.fru||'–'}</strong>${r.board&&r.board!==r.fru?`<br><span style="color:#6b7280;font-size:9px">${r.board}</span>`:''}</td>
+    ${isRect?`<td>${r.slot||'–'}</td>`:''}
+    <td class="sn-chip">${r.sn||'–'}</td>
+    <td>${r.vendor||'–'}</td>
+    <td>${r.mfg||'–'}</td>
+    <td style="color:${(r.exist||'').toLowerCase()==='yes'?'#22c55e':'#f59e0b'}">${r.exist||'–'}</td>
+  </tr>`).join('');
+
+  return`<div class="eq-section">
+    <div class="eq-section-hdr" onclick="toggleEqSection('${id}')">
+      <span class="eq-section-title"><span class="eq-cat-icon">${icon}</span>${cat} <span class="eq-section-badge">(${items.length})</span></span>
+      <span style="display:flex;gap:8px;align-items:center">${lcBadge}<span id="arr-${id}" class="eq-section-arrow">▶</span></span>
+    </div>
+    <div class="eq-section-body" id="${id}">
+      <table><thead>${thead}</thead><tbody>${tbody}</tbody></table>
+    </div>
+  </div>`;
+}
+
+function toggleEqSection(id){
+  const el=document.getElementById(id);
+  const arr=document.getElementById('arr-'+id);
+  if(!el)return;
+  const open=el.classList.toggle('open');
+  if(arr)arr.textContent=open?'▼':'▶';
+}
+
+function expandAllEq(siteId){
+  const eq=inv_equipos_global[siteId];
+  if(!eq||!eq.rows)return;
+  const cats=[...new Set(eq.rows.map(r=>r.cat))];
+  cats.forEach(cat=>{
+    const id='eq-'+siteId+'-'+cat.replace(/\s/g,'_').replace(/[()\/]/g,'');
+    const el=document.getElementById(id);
+    const arr=document.getElementById('arr-'+id);
+    if(el)el.classList.add('open');
+    if(arr)arr.textContent='▼';
+  });
+}
+
+function abrirDetalleSitio(code){
+
+  const s=inv_sitios_global.find(x=>x.id===code);if(!s)return;
+  inv_detail_open=code;
+  const eq=inv_equipos_global[code];
+  const panel=document.getElementById('inv-detail');
+  panel.classList.add('open');
+
+  // Agrupar equipamiento por categoría (acordeón), mismo orden que el inventario original
+  const CAT_ICONS={
+    'Rectificador':'⚡','Aire Acondicionado':'❄️','Bateria Litio':'🔋','Bateria':'🔋',
+    'Gabinete Hibrido (PowerRack)':'🗄️','Controlador ECC500':'🖥️','Adaptador Solar (PV)':'☀️',
+    'Modulo Solar (PV)':'☀️','Inversor':'🔄','SSU':'🔌','DCDB':'📦','Tarjeta IO':'🔧','Otros':'📋'
+  };
+  const CAT_ORDER=['Rectificador','Aire Acondicionado','Bateria Litio','Bateria','Adaptador Solar (PV)',
+    'Gabinete Hibrido (PowerRack)','Controlador ECC500','Tarjeta IO','Inversor','SSU','DCDB','Otros'];
+
+  let equiposHtml;
+  if(eq&&eq.rows&&eq.rows.length){
+    const bycat={};
+    eq.rows.forEach(r=>{(bycat[r.cat]=bycat[r.cat]||[]).push(r);});
+    const sorted=Object.keys(bycat).sort((a,b)=>{
+      const ia=CAT_ORDER.indexOf(a),ib=CAT_ORDER.indexOf(b);
+      return(ia<0?99:ia)-(ib<0?99:ib);
+    });
+    equiposHtml=sorted.map(cat=>renderEqSection(cat,bycat[cat],code)).join('');
+  }else{
+    equiposHtml='<div style="color:#6b7280;font-size:11px;text-align:center;padding:14px 0">Sin equipos registrados.</div>';
+  }
+
+  // Alarmas activas del sitio (de ops_alarms_global si ya está cargado)
+  const alarmasSitio=ops_alarms_global.filter(a=>a.sitio_id===code);
+  const alarmasHtml=alarmasSitio.length
+    ?alarmasSitio.map(a=>`<div class="invd-alarm-item">
+        <div class="sev">${a.severity}</div>
+        <div class="ttl">${a.alarma}</div>
+        <div class="ts">⏱ ${a.ocurrencia}</div>
+      </div>`).join('')
+    :'<div style="color:#6b7280;font-size:11px;text-align:center;padding:8px 0">Sin alarmas activas registradas.</div>';
+
+  panel.innerHTML=`
+    <div id="invd-hdr">
+      <button id="invd-close" onclick="cerrarDetalleSitio()">✕</button>
+      <h3>${s.nombre}</h3>
+      <p>${s.id} · ${(s.transporte||'—').replace(/_/g,' ')}</p>
+    </div>
+    <div class="invd-sec">
+      <h4>Información del sitio</h4>
+      <div class="invd-grid">
+        <div class="invd-f"><div class="fl">Departamento</div><div class="fv">${s.dept||'—'}</div></div>
+        <div class="invd-f"><div class="fl">Provincia</div><div class="fv">${s.prov||'—'}</div></div>
+        <div class="invd-f"><div class="fl">Distrito</div><div class="fv">${s.dist||'—'}</div></div>
+        <div class="invd-f"><div class="fl">Localidad</div><div class="fv">${s.localidad||'—'}</div></div>
+        <div class="invd-f"><div class="fl">Tipo nodo</div><div class="fv">${s.subtipo||'—'}</div></div>
+        <div class="invd-f"><div class="fl">Energía</div><div class="fv">${s.energia||'—'}</div></div>
+        <div class="invd-f"><div class="fl">Sector</div><div class="fv">${(s.transporte||'—').replace(/_/g,' ')}</div></div>
+        <div class="invd-f"><div class="fl">Acceso (h)</div><div class="fv">${s.tiempo_h??'—'}</div></div>
+      </div>
+      ${s.lat&&s.lon?`<div class="invd-f" style="margin-top:8px"><div class="fl">Coordenadas</div><div class="fv" style="font-family:'Courier New',monospace;font-size:10.5px">${s.lat}, ${s.lon}</div></div>`:''}
+    </div>
+    <div class="invd-sec">
+      <h4 style="display:flex;justify-content:space-between;align-items:center">
+        <span>Equipamiento (${eq&&eq.rows?eq.rows.length:0} equipos)</span>
+        <button onclick="expandAllEq('${code}')" style="background:#1f2937;border:1px solid #374151;color:#8b949e;border-radius:6px;padding:3px 10px;font-size:9.5px;cursor:pointer;font-family:inherit">Expandir todo</button>
+      </h4>
+      ${equiposHtml}
+
+    </div>
+    <div class="invd-sec" style="border-bottom:none">
+      <h4>Alarmas activas (${alarmasSitio.length})</h4>
+      ${alarmasHtml}
+    </div>
+    <button id="invd-btn-log" onclick="abrirModalLog('${s.id} — ${s.nombre}')">🔧 Registrar cambio de equipo</button>
+  `;
+}
+
+function cerrarDetalleSitio(){
+  inv_detail_open=null;
+  const panel=document.getElementById('inv-detail');
+  panel.classList.remove('open');
+  panel.innerHTML='';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TAB OPERACIONES — todas las alarmas NetEco (no solo Comm/Energy)
+// ═══════════════════════════════════════════════════════════════════
+function parseNetEcoRaw(b64,neteco_map){
+  const wb=XLSX.read(b64,{type:'base64'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  const SEV=1,ALARM=2,SITE=3,TIME=4,DTYPE=5,DOMAIN=6,DEVICE=7;
+
+  let dataStart=5;
+  for(let i=0;i<Math.min(raw.length,15);i++){
+    const r=raw[i];
+    if(r&&String(r[SEV]||'').trim()==='Severity'){dataStart=i+1;break;}
+  }
+
+  const out=[];
+  for(let i=dataStart;i<raw.length;i++){
+    const r=raw[i];if(!r||!r[ALARM])continue;
+    const site=String(r[SITE]||'').trim();
+    const domain=String(r[DOMAIN]||'').trim();
+    const sector=domain.split('/').filter(Boolean)[0]||'—';
+    out.push({
+      severity:  String(r[SEV]||'').trim(),
+      alarma:    String(r[ALARM]||'').trim(),
+      sitio_nombre: site,
+      sitio_id:  neteco_map[site.toUpperCase()]||null,
+      sector:    sector,
+      device_type: String(r[DTYPE]||'').trim(),
+      device:    String(r[DEVICE]||'').trim(),
+      ocurrencia: String(r[TIME]||'').trim()
+    });
+  }
+  return out;
+}
+
+async function cargarOperaciones(){
+  const tbody=document.getElementById('tbl-ops-body');
+  tbody.innerHTML='<tr><td colspan="7" class="no-data">⏳ Cargando alarmas NetEco...</td></tr>';
+  try{
+    const r=await prx('get','neteco');
+    if(!r.ok)throw new Error(r.error||'No se pudo leer NetEco');
+    ops_alarms_global=parseNetEcoRaw(r.data,neteco_map_global);
+
+    // Poblar filtros dinámicos
+    const tipos=[...new Set(ops_alarms_global.map(a=>a.alarma))].sort();
+    document.getElementById('ops-f-tipo').innerHTML='<option value="">— Tipo de avería —</option>'+tipos.map(t=>`<option value="${t}">${t}</option>`).join('');
+    const sectores=[...new Set(ops_alarms_global.map(a=>a.sector))].sort();
+    document.getElementById('ops-f-sector').innerHTML='<option value="">— Sector —</option>'+sectores.map(s=>`<option value="${s}">${s}</option>`).join('');
+
+    renderOperaciones(ops_alarms_global);
+  }catch(err){
+    tbody.innerHTML=`<tr><td colspan="7" class="no-data">❌ ${err.message}</td></tr>`;
+  }
+}
+
+function renderOperaciones(lista){
+  document.getElementById('ops-count').textContent=lista.length;
+  document.getElementById('ops-chip-crit').textContent='Critical: '+lista.filter(a=>a.severity==='Critical').length;
+  document.getElementById('ops-chip-maj').textContent='Major: '+lista.filter(a=>a.severity==='Major').length;
+  document.getElementById('ops-chip-warn').textContent='Warning: '+lista.filter(a=>a.severity==='Warning').length;
+
+  const tbody=document.getElementById('tbl-ops-body');
+  const cards=document.getElementById('ops-cards');
+
+  if(!lista.length){
+    tbody.innerHTML='<tr><td colspan="7" class="no-data">Sin resultados.</td></tr>';
+    cards.innerHTML='<div class="no-data">Sin resultados.</div>';
+    return;
+  }
+
+  tbody.innerHTML=lista.map(a=>`<tr>
+    <td><span class="sev-badge ${a.severity}">${a.severity}</span></td>
+    <td>${a.alarma}</td>
+    <td style="color:#58a6ff">${a.sitio_nombre}</td>
+    <td style="font-family:'Courier New',monospace;font-size:10px">${a.sitio_id||'—'}</td>
+    <td>${a.sector}</td>
+    <td style="color:#8b949e;font-size:10px">${a.device_type}</td>
+    <td style="font-family:'Courier New',monospace;font-size:10px">${a.ocurrencia}</td>
+  </tr>`).join('');
+
+  cards.innerHTML=lista.map(a=>`<div class="ops-card">
+    <div class="oc-ttl">${a.alarma}</div>
+    <span class="sev-badge ${a.severity}">${a.severity}</span>
+    <div class="oc-row"><span class="lb">Nodo:</span><span style="color:#58a6ff">${a.sitio_nombre}${a.sitio_id?' · '+a.sitio_id:''}</span></div>
+    <div class="oc-row"><span class="lb">Sector:</span><span>${a.sector}</span></div>
+    <div class="oc-row"><span class="lb">Tipo:</span><span>${a.device_type}</span></div>
+    <div class="oc-row"><span class="lb">Hora:</span><span style="font-family:'Courier New',monospace">${a.ocurrencia}</span></div>
+  </div>`).join('');
+}
+
+function filtrarOperaciones(){
+  const q=(document.getElementById('ops-search').value||'').toUpperCase();
+  const fSev=document.getElementById('ops-f-sev').value;
+  const fTipo=document.getElementById('ops-f-tipo').value;
+  const fSector=document.getElementById('ops-f-sector').value;
+  const filtrado=ops_alarms_global.filter(a=>{
+    if(fSev&&a.severity!==fSev)return false;
+    if(fTipo&&a.alarma!==fTipo)return false;
+    if(fSector&&a.sector!==fSector)return false;
+    if(q){
+      const hay=`${a.sitio_nombre} ${a.sector} ${a.alarma} ${a.sitio_id}`.toUpperCase();
+      if(!hay.includes(q))return false;
+    }
+    return true;
+  });
+  renderOperaciones(filtrado);
+}
+
+function setVistaOps(v){
+  ops_vista=v;
+  document.getElementById('vt-tabla').classList.toggle('active',v==='tabla');
+  document.getElementById('vt-tarjetas').classList.toggle('active',v==='tarjetas');
+  document.getElementById('tbl-ops').classList.toggle('hidden',v==='tarjetas');
+  document.getElementById('ops-cards').classList.toggle('active',v==='tarjetas');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TAB LOGÍSTICA — bitácora de equipos, persistida en Drive
+// ═══════════════════════════════════════════════════════════════════
+async function cargarLogistica(){
+  const body=document.getElementById('log-body');
+  body.innerHTML='<div id="log-empty">⏳ Cargando bitácora desde Drive...</div>';
+  try{
+    const r=await prx('get','logistica');
+    if(r.ok){
+      const parsed=JSON.parse(atob(r.data));
+      logistica_global=parsed.registros||[];
+    }else{
+      // Aún no existe logistica.json → arranca vacío, se crea al primer guardado
+      logistica_global=[];
+    }
+    logistica_cargada=true;
+    renderLogistica();
+  }catch(err){
+    logistica_global=[];
+    logistica_cargada=true;
+    renderLogistica();
+  }
+}
+
+const LOG_ICONS={Cambio:'🔄',Instalación:'➕',Retiro:'➖',Revisión:'🔍',Inspección:'📋'};
+
+function renderLogistica(){
+  const body=document.getElementById('log-body');
+  if(!logistica_global.length){
+    body.innerHTML='<div id="log-empty">📭 Sin registros de logística todavía.<br>Usa "➕ Nuevo registro" para empezar la bitácora.</div>';
+    return;
+  }
+  const ordenado=[...logistica_global].sort((a,b)=>new Date(b.ts||b.fecha)-new Date(a.ts||a.fecha));
+  body.innerHTML=ordenado.map(r=>`<div class="log-item">
+    <div class="log-icon">${LOG_ICONS[r.accion]||'🔧'}</div>
+    <div class="log-info">
+      <div class="log-top">
+        <span class="log-site">${r.sitio_nombre||r.sitio_id}</span>
+        <span class="log-action-tag ${r.accion}">${r.accion}</span>
+      </div>
+      <div class="log-meta"><b>${r.categoria}</b> — ${r.fru||'s/modelo'} ${r.sn?'· S/N '+r.sn:''}</div>
+      <div class="log-meta">Técnico: <b>${r.tecnico||'—'}</b> &nbsp;·&nbsp; <span class="log-date">${r.fecha}</span></div>
+      ${r.observaciones?`<div class="log-obs">"${r.observaciones}"</div>`:''}
+    </div>
+  </div>`).join('');
+}
+
+function abrirModalLog(prefillSitio){
+  document.getElementById('ml-sitio').value=prefillSitio||'';
+  document.getElementById('ml-cat').selectedIndex=0;
+  document.getElementById('ml-accion').selectedIndex=0;
+  document.getElementById('ml-fru').value='';
+  document.getElementById('ml-sn').value='';
+  document.getElementById('ml-tecnico').value='';
+  document.getElementById('ml-obs').value='';
+  document.getElementById('ml-fecha').value=new Date().toISOString().slice(0,10);
+  document.getElementById('modal-log').classList.add('open');
+}
+function cerrarModalLog(){document.getElementById('modal-log').classList.remove('open');}
+
+async function guardarRegistroLog(){
+  const sitioRaw=document.getElementById('ml-sitio').value.trim();
+  if(!sitioRaw){alert('Indica el sitio.');return;}
+  let sitio_id=sitioRaw,sitio_nombre=sitioRaw;
+  const m=sitioRaw.match(/^(LA\d+)\s*—\s*(.+)$/);
+  if(m){sitio_id=m[1];sitio_nombre=m[2];}
+
+  const registro={
+    id:'LOG-'+Date.now(),
+    fecha: document.getElementById('ml-fecha').value||new Date().toISOString().slice(0,10),
+    sitio_id, sitio_nombre,
+    categoria: document.getElementById('ml-cat').value,
+    accion:    document.getElementById('ml-accion').value,
+    fru:       document.getElementById('ml-fru').value.trim(),
+    sn:        document.getElementById('ml-sn').value.trim(),
+    tecnico:   document.getElementById('ml-tecnico').value.trim(),
+    observaciones: document.getElementById('ml-obs').value.trim(),
+    ts: new Date().toISOString()
+  };
+
+  logistica_global.push(registro);
+  cerrarModalLog();
+  renderLogistica();
+
+  try{
+    const payload=btoa(JSON.stringify({version:'1.0',registros:logistica_global}));
+    const r=await prx('setLogistica','',payload);
+    if(!r.ok){
+      flash('⚠️ Guardado localmente, pero falló Drive: '+(r.error||''),'err');
+    }else{
+      flash('✅ Registro guardado en Drive','ok');
+    }
+  }catch(err){
+    flash('⚠️ Guardado localmente, pero sin conexión a Drive','err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  INICIO
 // ═══════════════════════════════════════════════════════════════════
 resize();fitView();updateStats();draw();
 cargarTodo();   // carga automática al abrir la página
+
 </script>
 </body>
 </html>
