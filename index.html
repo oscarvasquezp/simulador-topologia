@@ -3,6 +3,59 @@
 <head>
 <meta charset="UTF-8">
 <title>Estado Red Acceso — Lambayeque v6</title>
+<script>
+// Implementación SHA-256 pura en JS (FIPS 180-4), sin dependencias.
+// Se usa en vez de crypto.subtle porque el archivo puede abrirse como
+// file:// donde la Web Crypto API no siempre está disponible.
+function sha256Hex(ascii){
+  function rrot(n,x){return(n>>>x)|(n<<(32-x));}
+  var h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  var k=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  var utf8=unescape(encodeURIComponent(ascii));
+  var bytes=[];for(var i=0;i<utf8.length;i++)bytes.push(utf8.charCodeAt(i));
+  var l=bytes.length*8;
+  bytes.push(0x80);
+  while(bytes.length%64!==56)bytes.push(0);
+  bytes.push(0,0,0,0); // bits 63-32 del largo (siempre 0 para nuestros mensajes cortos)
+  for(var s=24;s>=0;s-=8)bytes.push((l>>>s)&0xff); // bits 31-0 del largo, big-endian
+  for(var chunk=0;chunk<bytes.length;chunk+=64){
+    var w=new Array(64);
+    for(var i=0;i<16;i++){
+      w[i]=(bytes[chunk+i*4]<<24)|(bytes[chunk+i*4+1]<<16)|(bytes[chunk+i*4+2]<<8)|(bytes[chunk+i*4+3]);
+    }
+    for(i=16;i<64;i++){
+      var s0=rrot(w[i-15],7)^rrot(w[i-15],18)^(w[i-15]>>>3);
+      var s1=rrot(w[i-2],17)^rrot(w[i-2],19)^(w[i-2]>>>10);
+      w[i]=(w[i-16]+s0+w[i-7]+s1)|0;
+    }
+    var a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+    for(i=0;i<64;i++){
+      var S1=rrot(e,6)^rrot(e,11)^rrot(e,25);
+      var ch=(e&f)^((~e)&g);
+      var temp1=(hh+S1+ch+k[i]+w[i])|0;
+      var S0=rrot(a,2)^rrot(a,13)^rrot(a,22);
+      var maj=(a&b)^(a&c)^(b&c);
+      var temp2=(S0+maj)|0;
+      hh=g;g=f;f=e;e=(d+temp1)|0;d=c;c=b;b=a;a=(temp1+temp2)|0;
+    }
+    h[0]=(h[0]+a)|0;h[1]=(h[1]+b)|0;h[2]=(h[2]+c)|0;h[3]=(h[3]+d)|0;
+    h[4]=(h[4]+e)|0;h[5]=(h[5]+f)|0;h[6]=(h[6]+g)|0;h[7]=(h[7]+hh)|0;
+  }
+  var out='';
+  for(i=0;i<8;i++){
+    var v=h[i]>>>0;
+    out+=('00000000'+v.toString(16)).slice(-8);
+  }
+  return out;
+}
+</script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <style>
@@ -297,6 +350,34 @@ canvas{display:block}
 .ml-inp:focus,.ml-sel:focus,.ml-txt:focus{outline:none;border-color:#58a6ff}
 .ml-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
+/* ── LOGIN / SESIÓN ───────────────────────────────────────────── */
+#login-overlay{display:none;position:fixed;inset:0;background:#000000c8;z-index:9000;align-items:center;justify-content:center}
+#login-overlay.open{display:flex}
+#login-box{background:#161b22;border:1px solid #30363d;border-radius:14px;padding:28px 30px;width:340px;max-width:90vw}
+#login-box h3{font-size:15px;color:#e6edf3;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+#login-sub{font-size:10.5px;color:#6b7280;margin-bottom:18px}
+.lg-row{margin-bottom:13px}
+.lg-row label{display:block;font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.lg-inp{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-family:inherit;font-size:12.5px}
+.lg-inp:focus{outline:none;border-color:#58a6ff}
+#login-err{display:none;background:#1a0e0e;border:1px solid #7f1d1d;color:#ef4444;font-size:11px;border-radius:7px;padding:8px 11px;margin-bottom:12px}
+#login-err.show{display:block}
+#login-btns{display:flex;gap:8px;margin-top:6px}
+#login-btns button{flex:1;padding:10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700}
+#lg-cancel{background:#21262d;color:#8b949e}
+#lg-cancel:hover{background:#30363d}
+#lg-submit{background:#1f6feb;color:#fff}
+#lg-submit:hover{background:#388bfd}
+#lg-submit:disabled{opacity:.6;cursor:default}
+#session-badge{display:none;align-items:center;gap:7px;font-size:10.5px;color:#8b949e;white-space:nowrap;padding:0 4px}
+#session-badge.show{display:flex}
+#session-rol{font-size:8.5px;font-weight:700;padding:1px 7px;border-radius:9px;text-transform:uppercase;letter-spacing:.3px}
+#session-rol.ver{background:#58a6ff22;color:#58a6ff}
+#session-rol.descargar{background:#f59e0b22;color:#f59e0b}
+#session-rol.editar{background:#22c55e22;color:#22c55e}
+#session-logout{background:none;border:none;color:#6b7280;cursor:pointer;font-size:10px;text-decoration:underline;font-family:inherit}
+#session-logout:hover{color:#ef4444}
+
 /* ── VISTA GLOBAL EQUIPOS (modal cruce inventario × logística) ── */
 #bulk-overlay{display:none;position:fixed;inset:0;background:#000000c0;z-index:6000;align-items:flex-start;justify-content:center;padding-top:26px;overflow-y:auto}
 #bulk-overlay.open{display:flex}
@@ -377,6 +458,10 @@ canvas{display:block}
   <button id="btn-vista-global" onclick="abrirBulk()" title="Ver y exportar todo el equipamiento de la red, cruzado con los últimos cambios de Logística">
     📋 Vista Global Equipos
   </button>
+  <span id="session-badge">
+    👤 <span id="session-nombre"></span> <span id="session-rol"></span>
+    <button id="session-logout" onclick="cerrarSesion()">Salir</button>
+  </span>
 </nav>
 
 <!-- TAB 1: SIMULADOR -->
@@ -516,7 +601,7 @@ canvas{display:block}
       <option value="CON INVENTARIO">CON INVENTARIO</option>
       <option value="SIN INVENTARIO">SIN INVENTARIO</option>
     </select>
-    <button class="vt-btn" style="background:#1f2937;border:1px solid #374151;border-radius:7px" onclick="exportarInventarioCSV()">⬇ CSV</button>
+    <button id="btn-inv-csv" class="vt-btn" style="background:#1f2937;border:1px solid #374151;border-radius:7px" onclick="exportarInventarioCSV()">⬇ CSV</button>
     <span class="fbar-count"><b id="inv-count">0</b> sitios</span>
   </div>
   <div id="inv-body">
@@ -591,6 +676,27 @@ canvas{display:block}
   </div>
 </div>
 
+<!-- Modal Login — protege Inventario / Logística / Vista Global Equipos -->
+<div id="login-overlay">
+  <div id="login-box">
+    <h3>🔒 Acceso restringido</h3>
+    <div id="login-sub">Inventario, Logística y Vista Global requieren usuario y clave.</div>
+    <div id="login-err"></div>
+    <div class="lg-row">
+      <label>Usuario</label>
+      <input class="lg-inp" id="lg-user" autocomplete="username" placeholder="usuario">
+    </div>
+    <div class="lg-row">
+      <label>Contraseña</label>
+      <input class="lg-inp" id="lg-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <div id="login-btns">
+      <button id="lg-cancel" onclick="cerrarLoginModal()">Cancelar</button>
+      <button id="lg-submit" onclick="intentarLogin()">Iniciar sesión</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Vista Global Equipos -->
 <div id="bulk-overlay" onclick="if(event.target.id==='bulk-overlay')cerrarBulk()">
   <div id="bulk-modal">
@@ -614,7 +720,7 @@ canvas{display:block}
         <option>SSU</option><option>DCDB</option><option>Tarjeta IO</option><option>Otros</option>
       </select>
       <select id="bulk-fru" onchange="renderBulk()"><option value="">— FRU/Modelo —</option></select>
-      <button onclick="exportarBulkCSV()">⬇ CSV</button>
+      <button id="btn-bulk-csv" onclick="exportarBulkCSV()">⬇ CSV</button>
     </div>
     <div id="bulk-count">0 equipos</div>
     <div id="bulk-table-wrap">
@@ -788,6 +894,11 @@ let ops_vista='tabla';         // 'tabla' | 'tarjetas'
 let logistica_global=[];       // registros[] de logistica.json
 let logistica_cargada=false;
 let ml_sitio_prefill=null;     // sitio preseleccionado al abrir modal desde detalle
+
+// ── SESIÓN — protege Inventario / Logística / Vista Global (v8) ────
+const SESSION_KEY='plby_session_v1';
+let session={token:null,rol:null,user:null,nombre:null,exp:0};
+let login_pending_action=null; // función a ejecutar tras login exitoso
 const HOY=()=>new Date().toISOString().slice(0,10); // "YYYY-MM-DD"
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1062,6 +1173,10 @@ function fitView(){
 //  TABS
 // ═══════════════════════════════════════════════════════════════════
 function switchTab(id){
+  if((id==='inv'||id==='log')&&!sesionValida()){
+    requerirLogin(()=>switchTab(id));
+    return;
+  }
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['sim','dash','ops','inv','log'][i]===id));
   document.getElementById('tab-'+id).classList.add('active');
@@ -1553,15 +1668,155 @@ async function cargarTodo(manual=false){
   }
 }
 
-async function prx(action,tipo='',data=''){
+async function prx(action,tipo='',data='',useToken=false){
   let url=PROXY+'?action='+action;
   if(tipo)url+='&tipo='+tipo;
   if(data)url+='&data='+encodeURIComponent(data);
+  if(useToken)url+='&token='+encodeURIComponent((session.token)||'');
   const res=await fetch(url,{redirect:'follow'});
   if(!res.ok)throw new Error('HTTP '+res.status+' al llamar al Apps Script');
   return res.json();
 }
 function setSt(k,txt){const el=document.getElementById('di-'+k);if(el)el.textContent=txt;}
+
+// ═══════════════════════════════════════════════════════════════════
+//  AUTENTICACIÓN — protege Inventario / Logística / Vista Global
+//  3 roles: ver < descargar < editar (cada uno incluye los anteriores)
+//  El servidor (Apps Script) vuelve a validar TODO esto de forma
+//  independiente — este bloque solo controla la experiencia en el
+//  navegador (mostrar/ocultar botones, evitar llamadas inútiles).
+// ═══════════════════════════════════════════════════════════════════
+const ROLE_LEVEL={ver:1,descargar:2,editar:3};
+function nivelRol(r){return ROLE_LEVEL[r]||0;}
+
+function sesionValida(){
+  return!!(session.token&&session.exp&&Date.now()<session.exp);
+}
+
+function cargarSesionGuardada(){
+  try{
+    const raw=localStorage.getItem(SESSION_KEY);
+    if(!raw)return;
+    const s=JSON.parse(raw);
+    if(s&&s.token&&s.exp&&Date.now()<s.exp){
+      session=s;
+      actualizarBadgeSesion();
+      aplicarPermisosUI();
+    }else{
+      localStorage.removeItem(SESSION_KEY);
+    }
+  }catch(e){/* sesión corrupta, se ignora */}
+}
+
+function guardarSesionLocal(){
+  try{localStorage.setItem(SESSION_KEY,JSON.stringify(session));}catch(e){}
+}
+
+function cerrarSesion(){
+  session={token:null,rol:null,user:null,nombre:null,exp:0};
+  try{localStorage.removeItem(SESSION_KEY);}catch(e){}
+  actualizarBadgeSesion();
+  aplicarPermisosUI();
+  // Si estaba en una pestaña protegida, regresa al Simulador
+  const activo=document.querySelector('.tb.active');
+  if(activo&&(activo.textContent.includes('Inventario')||activo.textContent.includes('Logística'))){
+    switchTab('sim');
+  }
+  document.getElementById('bulk-overlay').classList.remove('open');
+}
+
+function requerirLogin(callback){
+  login_pending_action=callback||null;
+  abrirLoginModal();
+}
+
+function abrirLoginModal(){
+  document.getElementById('login-err').classList.remove('show');
+  document.getElementById('lg-user').value='';
+  document.getElementById('lg-pass').value='';
+  document.getElementById('login-overlay').classList.add('open');
+  setTimeout(()=>document.getElementById('lg-user').focus(),50);
+}
+
+function cerrarLoginModal(){
+  document.getElementById('login-overlay').classList.remove('open');
+  login_pending_action=null;
+}
+
+async function intentarLogin(){
+  const user=document.getElementById('lg-user').value.trim();
+  const pass=document.getElementById('lg-pass').value;
+  const errBox=document.getElementById('login-err');
+  const btn=document.getElementById('lg-submit');
+  errBox.classList.remove('show');
+
+  if(!user||!pass){
+    errBox.textContent='Ingresa usuario y contraseña.';
+    errBox.classList.add('show');
+    return;
+  }
+
+  btn.disabled=true;btn.textContent='Verificando...';
+  try{
+    const passHash=sha256Hex(pass);
+    const url=PROXY+'?action=login&user='+encodeURIComponent(user)+'&passHash='+encodeURIComponent(passHash);
+    const res=await fetch(url,{redirect:'follow'});
+    const r=await res.json();
+
+    if(!r.ok){
+      errBox.textContent=r.error||'Usuario o contraseña incorrectos.';
+      errBox.classList.add('show');
+      return;
+    }
+
+    session={
+      token:r.token, rol:r.rol, user:user, nombre:r.nombre||user,
+      exp:Date.now()+12*60*60*1000 // 12h — el servidor valida su propio vencimiento igual
+    };
+    guardarSesionLocal();
+    actualizarBadgeSesion();
+    aplicarPermisosUI();
+    cerrarLoginModal();
+
+    const cb=login_pending_action;
+    login_pending_action=null;
+    if(cb)cb();
+  }catch(err){
+    errBox.textContent='No se pudo conectar con el servidor. Intenta de nuevo.';
+    errBox.classList.add('show');
+  }finally{
+    btn.disabled=false;btn.textContent='Iniciar sesión';
+  }
+}
+
+function actualizarBadgeSesion(){
+  const badge=document.getElementById('session-badge');
+  if(!sesionValida()){badge.classList.remove('show');return;}
+  badge.classList.add('show');
+  document.getElementById('session-nombre').textContent=session.nombre;
+  const rolEl=document.getElementById('session-rol');
+  rolEl.textContent=session.rol;
+  rolEl.className=session.rol;
+}
+
+function aplicarPermisosUI(){
+  const puedeDescargar=nivelRol(session.rol)>=nivelRol('descargar');
+  const puedeEditar=nivelRol(session.rol)>=nivelRol('editar');
+  const csvInv=document.getElementById('btn-inv-csv');
+  const csvBulk=document.getElementById('btn-bulk-csv');
+  const nuevoLog=document.getElementById('btn-log-new');
+  if(csvInv)csvInv.style.display=puedeDescargar?'inline-block':'none';
+  if(csvBulk)csvBulk.style.display=puedeDescargar?'inline-block':'none';
+  if(nuevoLog)nuevoLog.style.display=puedeEditar?'inline-block':'none';
+}
+
+// Enter para enviar el login sin tener que hacer clic
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&document.getElementById('login-overlay').classList.contains('open')){
+    intentarLogin();
+  }
+});
+
 function fmtD(iso){
   if(!iso)return'?';const d=new Date(iso);if(isNaN(d))return iso.slice(0,10);
   return`${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -2092,7 +2347,8 @@ async function cargarInventario(){
   const tbody=document.getElementById('tbl-inv-body');
   tbody.innerHTML='<tr><td colspan="14" class="no-data">⏳ Cargando inventario desde Drive...</td></tr>';
   try{
-    const[rSitios,rEquipos]=await Promise.all([prx('get','inv_sitios'),prx('get','inv_equipos')]);
+    const[rSitios,rEquipos]=await Promise.all([prx('get','inv_sitios','',true),prx('get','inv_equipos','',true)]);
+    if(rSitios.auth||rEquipos.auth){cerrarSesion();requerirLogin(()=>cargarInventario());return;}
     if(!rSitios.ok)throw new Error(rSitios.error||'No se pudo leer inv_sitios');
     if(!rEquipos.ok)throw new Error(rEquipos.error||'No se pudo leer inv_equipos');
 
@@ -2232,6 +2488,10 @@ function exportarInventarioCSV(){
 let allBulkRows=[];
 
 async function abrirBulk(){
+  if(!sesionValida()){
+    requerirLogin(()=>abrirBulk());
+    return;
+  }
   const overlay=document.getElementById('bulk-overlay');
   overlay.classList.add('open');
   document.getElementById('bulk-body').innerHTML='<tr><td colspan="11" class="no-data">⏳ Cargando equipamiento...</td></tr>';
@@ -2483,6 +2743,7 @@ function abrirDetalleSitio(code){
     </div>
     <button id="invd-btn-log" onclick="abrirModalLog('${s.id} — ${s.nombre}')">🔧 Registrar cambio de equipo</button>
   `;
+  document.getElementById('invd-btn-log').style.display=(nivelRol(session.rol)>=nivelRol('editar'))?'block':'none';
 }
 
 function cerrarDetalleSitio(){
@@ -2615,7 +2876,8 @@ async function cargarLogistica(){
   const body=document.getElementById('log-body');
   body.innerHTML='<div id="log-empty">⏳ Cargando bitácora desde Drive...</div>';
   try{
-    const r=await prx('get','logistica');
+    const r=await prx('get','logistica','',true);
+    if(r.auth){cerrarSesion();requerirLogin(()=>cargarLogistica());return;}
     if(r.ok){
       const parsed=JSON.parse(atob(r.data));
       logistica_global=parsed.registros||[];
@@ -2656,6 +2918,10 @@ function renderLogistica(){
 }
 
 function abrirModalLog(prefillSitio){
+  if(nivelRol(session.rol)<nivelRol('editar')){
+    alert('Tu usuario no tiene permiso para registrar cambios. Necesitas rol "editar".');
+    return;
+  }
   document.getElementById('ml-sitio').value=prefillSitio||'';
   document.getElementById('ml-cat').selectedIndex=0;
   document.getElementById('ml-accion').selectedIndex=0;
@@ -2669,6 +2935,10 @@ function abrirModalLog(prefillSitio){
 function cerrarModalLog(){document.getElementById('modal-log').classList.remove('open');}
 
 async function guardarRegistroLog(){
+  if(nivelRol(session.rol)<nivelRol('editar')){
+    alert('Tu usuario no tiene permiso para registrar cambios. Necesitas rol "editar".');
+    return;
+  }
   const sitioRaw=document.getElementById('ml-sitio').value.trim();
   if(!sitioRaw){alert('Indica el sitio.');return;}
   let sitio_id=sitioRaw,sitio_nombre=sitioRaw;
@@ -2694,8 +2964,14 @@ async function guardarRegistroLog(){
 
   try{
     const payload=btoa(JSON.stringify({version:'1.0',registros:logistica_global}));
-    const r=await prx('setLogistica','',payload);
-    if(!r.ok){
+    const r=await prx('setLogistica','',payload,true);
+    if(r.auth){
+      logistica_global=logistica_global.filter(x=>x.id!==registro.id); // revertir, no se guardó
+      renderLogistica();
+      cerrarSesion();
+      requerirLogin(()=>{});
+      flash('⚠️ Tu sesión expiró — el registro NO se guardó, vuelve a intentar','err');
+    }else if(!r.ok){
       flash('⚠️ Guardado localmente, pero falló Drive: '+(r.error||''),'err');
     }else{
       flash('✅ Registro guardado en Drive','ok');
@@ -2708,6 +2984,7 @@ async function guardarRegistroLog(){
 // ═══════════════════════════════════════════════════════════════════
 //  INICIO
 // ═══════════════════════════════════════════════════════════════════
+cargarSesionGuardada(); // restaura sesión si sigue vigente (12h)
 resize();fitView();updateStats();draw();
 cargarTodo();   // carga automática al abrir la página
 
