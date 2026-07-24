@@ -1370,12 +1370,56 @@ function clasificarRaiz(code,nodes_all,inf_alarms,neteco_comm,neteco_energy){
   return{causa:rol.startsWith('D')?'PRONATEL':'RADIO',detalle:'OK'};
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  LÍNEA CANÓNICA — resuelve ambigüedad en nodos DOBLE/TRIPLE ENLACE
+//  ------------------------------------------------------------------
+//  Algunos nodos tienen 2-3 padres reales (redundancia en anillo) que
+//  a veces se referencian mutuamente, formando ciclos genuinos en el
+//  grafo. Para efectos de AGRUPAR incidencias (no para mostrar el flag
+//  "doble enlace", que sigue viniendo de los padres reales), se fija
+//  UN SOLO padre "canónico" por nodo: la línea principal (troncal
+//  vertical JLO–Lambayeque–Mochumi–Túcume–Illimo–Morrope) tiene
+//  prioridad sobre la línea secundaria (troncal horizontal
+//  San José–JLO–Las Brisas–Pomalca–Luya–Patapo–Chongoyape). El otro/s
+//  enlace/s se ignoran para el conteo — son solo respaldo redundante.
+//
+//  LAMBAYEQUE y POMALCA son "anclas": tope de cada línea, sin padre
+//  canónico (se tratan como raíz posible aunque sus padres reales
+//  estén caídos), evitando así que el ciclo Lambayeque↔Mochumi o
+//  Pomalca↔Picsi quede indeterminado.
+//
+//  ⚠️ Mantenimiento: si la BD agrega un nuevo nodo con 2+ padres, debe
+//  añadirse aquí su línea canónica; si no, cae al comportamiento
+//  anterior (todos los padres reales) — seguro gracias a la guardia
+//  de "visitados", pero puede volver a mostrar duplicados si ese nuevo
+//  nodo forma parte de un ciclo.
+// ═══════════════════════════════════════════════════════════════════
+const LINEA_CANONICA={
+  'LA00398':'LA00353', // MORROPE   -> LAMBAYEQUE (línea principal)
+  'LA00390':'LA00353', // MOCHUMI   -> LAMBAYEQUE (línea principal)
+  'LA00517':'LA00390', // TUCUME    -> MOCHUMI
+  'LA00323':'LA00517', // ILLIMO    -> TUCUME
+  'LA00438':'LA00445', // PICSI     -> POMALCA (línea secundaria)
+  'LA00378':'LA00445', // LUYA      -> POMALCA
+  'LA00380':'LA00378', // MESONES   -> LUYA
+  'LA00303':'LA00380', // FERRENAFE -> MESONES
+  'LA00730':'LA00303', // CCPP P.NUEVO -> FERRENAFE
+  'LA00471':'LA00371', // REQUE     -> LA_VICTORIA (anillo costa, provisional)
+  'LA00396':'LA00296', // MONSEFU   -> ETEN (anillo costa, provisional)
+};
+const LINEA_ANCLAS=new Set(['LA00353','LA00445']); // LAMBAYEQUE, POMALCA
+
+function padresEfectivos(code,nodes_all){
+  if(LINEA_ANCLAS.has(code))return[];
+  if(LINEA_CANONICA[code])return[LINEA_CANONICA[code]];
+  return(nodes_all[code]||{}).padres||[];
+}
+
 function encontrarRaiz(code,nodes_all,sin_servicio){
   const visited=new Set();let cur=code;
   while(cur){
     if(visited.has(cur))break;visited.add(cur);
-    const node=nodes_all[cur]||{};
-    const padres=node.padres||[];
+    const padres=padresEfectivos(cur,nodes_all);
     if(!padres.length)return cur;
     const caidos=padres.filter(p=>sin_servicio.has(p));
     if(caidos.length===padres.length)cur=caidos[0];else return cur;
@@ -1385,23 +1429,18 @@ function encontrarRaiz(code,nodes_all,sin_servicio){
 
 function expandirSubtree(root,nodes_all,sin_servicio){
   const children={};
-  for(const[code,node]of Object.entries(nodes_all))
-    for(const p of(node.padres||[])){if(!children[p])children[p]=[];children[p].push(code);}
+  for(const code of Object.keys(nodes_all))
+    for(const p of padresEfectivos(code,nodes_all)){if(!children[p])children[p]=[];children[p].push(code);}
   const result=new Set();const stack=[root];
-  // Guardia contra ciclos: algunos nodos DOBLE ENLACE se listan mutuamente
-  // como padre el uno del otro (backup en anillo). Si ambos caen a la vez
-  // (avería masiva), sin esta guardia el recorrido nunca termina — cada
-  // vuelta al ciclo vuelve a apilar los mismos nodos infinitamente hasta
-  // reventar el límite de tamaño de array ("RangeError: Invalid array
-  // length"). Con la guardia, cada nodo se expande una sola vez: el
-  // resultado de "ok" no depende de por qué camino se llegó a él, solo
-  // de su propia lista de padres, así que expandir una vez es correcto.
+  // Guardia contra ciclos: se mantiene como red de seguridad — con la
+  // línea canónica ya no debería activarse para los nodos conocidos,
+  // pero protege ante cualquier doble enlace nuevo aún no mapeado.
   const visitados=new Set();
   while(stack.length){
     const c=stack.pop();
     if(visitados.has(c))continue;
     if(!sin_servicio.has(c))continue;
-    const padres_c=(nodes_all[c]||{}).padres||[];
+    const padres_c=padresEfectivos(c,nodes_all);
     const ok=c===root||!padres_c.length||padres_c.every(p=>sin_servicio.has(p));
     if(!ok)continue;
     visitados.add(c);result.add(c);
