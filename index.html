@@ -378,6 +378,16 @@ canvas{display:block}
 #session-logout{background:none;border:none;color:#6b7280;cursor:pointer;font-size:10px;text-decoration:underline;font-family:inherit}
 #session-logout:hover{color:#ef4444}
 
+/* ── DESGLOSE POR OLA DE CAÍDA (fila expandible en dashboard) ──── */
+.olas-row td{border-bottom:2px solid #21262d}
+.olas-panel{background:#0d1117;padding:12px 20px;border-top:1px solid #21262d;border-bottom:1px solid #21262d}
+.olas-hdr{font-size:10.5px;color:#8b949e;font-weight:600;margin-bottom:8px}
+.olas-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.olas-tbl th{text-align:left;color:#6b7280;font-size:9px;text-transform:uppercase;letter-spacing:.4px;padding:4px 8px;border-bottom:1px solid #21262d}
+.olas-tbl td{padding:6px 8px;border-bottom:1px solid #161b22;vertical-align:top}
+.ola-raiz-chip{display:inline-flex;align-items:baseline;gap:5px;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:3px 9px;margin:2px 4px 2px 0;font-size:11px;color:#e6edf3;font-weight:600}
+.ola-raiz-cod{font-family:'Courier New',monospace;font-size:9px;color:#58a6ff;font-weight:400}
+
 /* ── VISTA GLOBAL EQUIPOS (modal cruce inventario × logística) ── */
 #bulk-overlay{display:none;position:fixed;inset:0;background:#000000c0;z-index:6000;align-items:flex-start;justify-content:center;padding-top:26px;overflow-y:auto}
 #bulk-overlay.open{display:flex}
@@ -1418,19 +1428,33 @@ function padresEfectivos(code,nodes_all){
   return(nodes_all[code]||{}).padres||[];
 }
 
-function encontrarRaiz(code,nodes_all,sin_servicio){
+// ── Consciencia del tiempo — un nodo solo "sube" hacia su padre canónico
+//    si ese padre lleva caído IGUAL o MÁS tiempo que el propio nodo. Si
+//    el padre empezó a fallar DESPUÉS, no puede ser la causa de una falla
+//    previa del hijo — el hijo se queda como su propia raíz independiente.
+//    Esto evita que incidencias antiguas y no relacionadas (ej. un caso
+//    social o un corte de hace semanas) queden ocultas dentro de una
+//    incidencia nueva solo porque comparten el mismo tramo de red.
+function esCausaValidaTiempo(hijo,padre,sin_servicio,inf_alarms){
+  if(!sin_servicio.has(padre))return false;
+  const dh=inf_alarms[hijo]?.days??0;
+  const dp=inf_alarms[padre]?.days??0;
+  return dp>=dh;
+}
+
+function encontrarRaiz(code,nodes_all,sin_servicio,inf_alarms){
   const visited=new Set();let cur=code;
   while(cur){
     if(visited.has(cur))break;visited.add(cur);
     const padres=padresEfectivos(cur,nodes_all);
     if(!padres.length)return cur;
-    const caidos=padres.filter(p=>sin_servicio.has(p));
-    if(caidos.length===padres.length)cur=caidos[0];else return cur;
+    const validos=padres.filter(p=>esCausaValidaTiempo(cur,p,sin_servicio,inf_alarms));
+    if(validos.length===padres.length)cur=validos[0];else return cur;
   }
   return cur;
 }
 
-function expandirSubtree(root,nodes_all,sin_servicio){
+function expandirSubtree(root,nodes_all,sin_servicio,inf_alarms){
   const children={};
   for(const code of Object.keys(nodes_all))
     for(const p of padresEfectivos(code,nodes_all)){if(!children[p])children[p]=[];children[p].push(code);}
@@ -1444,7 +1468,7 @@ function expandirSubtree(root,nodes_all,sin_servicio){
     if(visitados.has(c))continue;
     if(!sin_servicio.has(c))continue;
     const padres_c=padresEfectivos(c,nodes_all);
-    const ok=c===root||!padres_c.length||padres_c.every(p=>sin_servicio.has(p));
+    const ok=c===root||!padres_c.length||padres_c.every(p=>esCausaValidaTiempo(c,p,sin_servicio,inf_alarms));
     if(!ok)continue;
     visitados.add(c);result.add(c);
     for(const ch of(children[c]||[]))stack.push(ch);
@@ -1466,7 +1490,7 @@ function analizarIncidencias(nodes_bd,inf_alarms,neteco_comm,neteco_energy){
   // Raíces
   const by_root={};
   for(const code of sin_servicio){
-    const root=encontrarRaiz(code,nodes_all,sin_servicio);
+    const root=encontrarRaiz(code,nodes_all,sin_servicio,inf_alarms);
     if(!by_root[root])by_root[root]=new Set();
     by_root[root].add(code);
   }
@@ -1474,7 +1498,7 @@ function analizarIncidencias(nodes_bd,inf_alarms,neteco_comm,neteco_energy){
   const sociales_dinamicos=new Set([...Object.keys(overrides_global.sociales||{}),...SOCIAL_OVR]);
 
   for(const[root]of Object.entries(by_root)){
-    const members=expandirSubtree(root,nodes_all,sin_servicio);
+    const members=expandirSubtree(root,nodes_all,sin_servicio,inf_alarms);
     const{causa,detalle}=clasificarRaiz(root,nodes_all,inf_alarms,neteco_comm,neteco_energy);
     const root_days=inf_alarms[root]?.days||0;
     const max_days=[...members].reduce((m,c)=>Math.max(m,inf_alarms[c]?.days||0),0);
@@ -1513,6 +1537,24 @@ function notaIntermitencia(inc){
     else parts.push(`${n}dep.—${ds}`);
   }
   return'⚠ '+parts.join(' | ');
+}
+
+// ── Desglose de "olas" — para incidencias intermitentes, identifica
+//    dentro de cada grupo de días el/los nodo(s) que son el punto de
+//    entrada real de esa ola (su padre canónico no está en el mismo
+//    grupo de días, o no tiene padre), en vez de solo mostrar el
+//    conteo compacto. Usado por la fila expandible del dashboard.
+function calcularOlas(inc){
+  const olas=[];
+  for(const[d,codes]of Object.entries(inc.days_dist).sort((a,b)=>Number(a[0])-Number(b[0]))){
+    const grupo=new Set(codes);
+    const raices=codes.filter(c=>{
+      const padres=padresEfectivos(c,nodesGlobal);
+      return!padres.length||!padres.some(p=>grupo.has(p));
+    });
+    olas.push({dias:d,total:codes.length,raices});
+  }
+  return olas;
 }
 
 function construirTexto(inc){
@@ -1562,22 +1604,51 @@ function actualizarDashboard({incidencias,sin_servicio}){
       const[titulo,detalle,es_nota]=construirTexto(inc);
       const clr=CAUSA_CLR[inc.causa]||'#6b7280';
       const lbl=CAUSA_LABELS[inc.causa]||inc.causa;
-      const dm=inc.intermitencia?`<span style="color:#f59e0b">${inc.root_days}⚠</span>`:inc.root_days;
+      const dm=inc.intermitencia?`<span style="color:#f59e0b;cursor:pointer" onclick="toggleOlas(${i})" title="Ver desglose por ola de caída">${inc.root_days}⚠</span>`:inc.root_days;
       const hasOvr=!!(overrides_global.causas||{})[inc.root];
       const editTitle=hasOvr?'Override activo — clic para editar':'Editar causa raíz';
       // Si el detalle viene de nota del técnico → añadir indicador visual
       const detalle_html=es_nota
         ?`<span title="Nota del técnico" style="color:#94a3b8;font-size:9px;margin-right:4px">✏️</span>${detalle}`
         :detalle;
+      const detalle_final=inc.intermitencia
+        ?`<span style="cursor:pointer" onclick="toggleOlas(${i})" title="Ver desglose por ola de caída">${detalle_html} <span id="olas-arrow-${i}" style="color:#6b7280;font-size:9px">▶</span></span>`
+        :detalle_html;
+      let filaOlas='';
+      if(inc.intermitencia){
+        const olas=calcularOlas(inc);
+        const filas_olas=olas.map(o=>{
+          const raicesHtml=o.raices.map(r=>{
+            const n=nodesGlobal[r]||{};
+            return`<span class="ola-raiz-chip">${(n.name||r).replace(/_/g,' ')} <span class="ola-raiz-cod">${r}</span></span>`;
+          }).join(' ');
+          return`<tr class="ola-fila">
+            <td class="tc" style="color:#6b7280">${o.dias}d</td>
+            <td class="tc tbold">${o.total}</td>
+            <td>${raicesHtml}</td>
+          </tr>`;
+        }).join('');
+        filaOlas=`<tr id="olas-row-${i}" class="olas-row" style="display:none">
+          <td colspan="7" style="padding:0">
+            <div class="olas-panel">
+              <div class="olas-hdr">🌊 Desglose por ola de caída — ${olas.length} eventos distintos dentro de esta incidencia</div>
+              <table class="olas-tbl">
+                <thead><tr><th>Días</th><th>Nodos</th><th>Nodo(s) raíz de la ola</th></tr></thead>
+                <tbody>${filas_olas}</tbody>
+              </table>
+            </div>
+          </td>
+        </tr>`;
+      }
       return`<tr>
         <td class="tc" style="color:#6b7280">${i+1}</td>
         <td style="text-align:center"><span class="tag" style="background:${clr}22;color:${clr};border:1px solid ${clr}55">${lbl}</span>${hasOvr?'<span style="color:#f59e0b;font-size:9px;margin-left:4px">✏️</span>':''}</td>
         <td class="tbold">${titulo}</td>
         <td class="tc tbold">${inc.count}</td>
         <td class="tc tbold">${dm}</td>
-        <td class="det">${detalle_html}</td>
+        <td class="det">${detalle_final}</td>
         <td class="tc"><button onclick="abrirEditCausa('${inc.root}')" title="${editTitle}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;color:${hasOvr?'#f59e0b':'#374151'}" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='none'">✏️</button></td>
-      </tr>`;
+      </tr>${filaOlas}`;
     }).join('');
   }
   dibujarDonut(incidencias);
@@ -1585,6 +1656,15 @@ function actualizarDashboard({incidencias,sin_servicio}){
   const partes=Object.entries(cnt).sort((a,b)=>(CAUSA_ORDEN[a[0]]??9)-(CAUSA_ORDEN[b[0]]??9)).map(([c,n])=>`${n} ${CAUSA_LABELS[c]}`);
   document.getElementById('dash-foot').textContent=nSin>0?`${nSin} nodos sin servicio — ${partes.join(' | ')}.`:'Red operativa al 100%.';
   renderPanelSocial();
+}
+
+function toggleOlas(i){
+  const row=document.getElementById('olas-row-'+i);
+  const arrow=document.getElementById('olas-arrow-'+i);
+  if(!row)return;
+  const abierto=row.style.display!=='none';
+  row.style.display=abierto?'none':'table-row';
+  if(arrow)arrow.textContent=abierto?'▶':'▼';
 }
 
 function dibujarDonut(incidencias){
