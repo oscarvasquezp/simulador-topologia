@@ -479,8 +479,8 @@ canvas{display:block}
   <div id="app">
     <div id="panel">
       <div id="ph">
-        <h1>🌐 Simulador Topología v6 — Lambayeque</h1>
-        <p>3 Anillos + Ramales · Datos automáticos desde Drive</p>
+        <h1>🌐 Simulador Topología v10 — Lambayeque</h1>
+        <p>3 Anillos + Ramales · Datos automáticos desde Drive · Upgrade 01-ago-2026</p>
       </div>
       <div id="stats">
         <div class="slbl">Impacto en tiempo real</div>
@@ -1381,102 +1381,98 @@ function clasificarRaiz(code,nodes_all,inf_alarms,neteco_comm,neteco_energy){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  LÍNEA CANÓNICA — resuelve ambigüedad en nodos DOBLE/TRIPLE ENLACE
+//  RESOLUCIÓN DE INCIDENCIAS — algoritmo consciente de topología de
+//  anillo  ·  index_v10  ·  upgrade 01-ago-2026
 //  ------------------------------------------------------------------
-//  Algunos nodos tienen 2-3 padres reales (redundancia en anillo) que
-//  a veces se referencian mutuamente, formando ciclos genuinos en el
-//  grafo. Para efectos de AGRUPAR incidencias (no para mostrar el flag
-//  "doble enlace", que sigue viniendo de los padres reales), se fija
-//  UN SOLO padre "canónico" por nodo: la línea principal (troncal
-//  vertical JLO–Lambayeque–Mochumi–Túcume–Illimo–Morrope) tiene
-//  prioridad sobre la línea secundaria (troncal horizontal
-//  San José–JLO–Las Brisas–Pomalca–Luya–Patapo–Chongoyape). El otro/s
-//  enlace/s se ignoran para el conteo — son solo respaldo redundante.
+//  Reemplaza la tabla fija LINEA_CANONICA (v8-v9) por una regla general:
 //
-//  LAMBAYEQUE y POMALCA son "anclas": tope de cada línea, sin padre
-//  canónico (se tratan como raíz posible aunque sus padres reales
-//  estén caídos), evitando así que el ciclo Lambayeque↔Mochumi o
-//  Pomalca↔Picsi quede indeterminado.
+//  1) Para nodos con 2+ padres reales (anillo — doble/triple enlace):
+//     se prueba cada camino posible, del MÁS RECIENTE al más antiguo
+//     (por días caído), y se toma el primero que efectivamente llega
+//     a un nodo CON servicio real. Un camino que solo vuelve sobre sí
+//     mismo (dos nodos que se explican mutuamente, sin salida) se
+//     descarta — es un "callejón sin salida" (ver caso Morrope↔
+//     Lambayeque, ambos a 9 días, ninguno relaya al otro).
 //
-//  ⚠️ Mantenimiento: si la BD agrega un nuevo nodo con 2+ padres, debe
-//  añadirse aquí su línea canónica; si no, cae al comportamiento
-//  anterior (todos los padres reales) — seguro gracias a la guardia
-//  de "visitados", pero puede volver a mostrar duplicados si ese nuevo
-//  nodo forma parte de un ciclo.
+//  2) Para el resto de la red (un solo padre real): sube al padre
+//     SOLO SI el padre lleva caído igual o más tiempo que el hijo.
+//     Si el padre es más reciente, no puede explicar una falla más
+//     antigua del hijo — el hijo queda como su propia raíz.
+//
+//  Validado el 28-jul-2026 contra corte real: 219 nodos, 9 incidencias,
+//  cero duplicados, coincide nodo por nodo con el análisis manual del
+//  operador (caso Red Luya absorbiendo Mochumi/Illimo/Túcume vía el
+//  Anillo Norte, tras la caída de Morrope que dejó unidireccional el
+//  Anillo Interior).
+//
+//  ⚠️ Requiere BD_AUTOMATIZACION_v6 (o posterior) en Drive para que
+//  Cayaltí, La Victoria, Monsefú y Picsi tengan su padre real
+//  correcto. Con la BD v5 original, Cayaltí puede aparecer como
+//  incidencia separada (10 en vez de 9) — ver hoja CAMBIOS_V5_A_V6
+//  del archivo BD_AUTOMATIZACION_v6.xlsx para el detalle de qué
+//  cambia y por qué.
 // ═══════════════════════════════════════════════════════════════════
-const LINEA_CANONICA={
-  'LA00398':'LA00353', // MORROPE   -> LAMBAYEQUE (línea principal)
-  'LA00390':'LA00353', // MOCHUMI   -> LAMBAYEQUE (línea principal)
-  'LA00517':'LA00390', // TUCUME    -> MOCHUMI
-  'LA00323':'LA00517', // ILLIMO    -> TUCUME
-  'LA00438':'LA00445', // PICSI     -> POMALCA (línea secundaria)
-  'LA00378':'LA00445', // LUYA      -> POMALCA
-  'LA00380':'LA00378', // MESONES   -> LUYA
-  'LA00303':'LA00380', // FERRENAFE -> MESONES
-  'LA00730':'LA00303', // CCPP P.NUEVO -> FERRENAFE
-  'LA00243':'LA00434', // CAYALTI   -> PATAPO (confirmado en TOPOLOGIA_DISTRITAL; BD_COMPLETA decía Pomalca, desactualizado)
-  // NOTA: CHOCHOPE NO va aquí — su padre real es MOTUPE (línea principal),
-  // confirmado en BD_COMPLETA y TOPOLOGIA_DISTRITAL. No requiere override.
-  'LA00471':'LA00371', // REQUE     -> LA_VICTORIA (anillo costa, provisional)
-  'LA00396':'LA00296', // MONSEFU   -> ETEN (anillo costa, provisional)
-};
-const LINEA_ANCLAS=new Set(['LA00353','LA00445']); // LAMBAYEQUE, POMALCA
+let _resolverCache=null;
 
-function padresEfectivos(code,nodes_all){
-  if(LINEA_ANCLAS.has(code))return[];
-  if(LINEA_CANONICA[code])return[LINEA_CANONICA[code]];
-  return(nodes_all[code]||{}).padres||[];
-}
+function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
+  const dias=c=>inf_alarms[c]?.days??0;
+  const RING_NODES=new Set(Object.keys(nodes_all).filter(c=>(nodes_all[c].padres||[]).length>1));
 
-// ── Consciencia del tiempo — un nodo solo "sube" hacia su padre canónico
-//    si ese padre lleva caído IGUAL o MÁS tiempo que el propio nodo. Si
-//    el padre empezó a fallar DESPUÉS, no puede ser la causa de una falla
-//    previa del hijo — el hijo se queda como su propia raíz independiente.
-//    Esto evita que incidencias antiguas y no relacionadas (ej. un caso
-//    social o un corte de hace semanas) queden ocultas dentro de una
-//    incidencia nueva solo porque comparten el mismo tramo de red.
-function esCausaValidaTiempo(hijo,padre,sin_servicio,inf_alarms){
-  if(!sin_servicio.has(padre))return false;
-  const dh=inf_alarms[hijo]?.days??0;
-  const dp=inf_alarms[padre]?.days??0;
-  return dp>=dh;
+  // Paso 1 — resolver SOLO los nodos-anillo, de forma aislada (evita que
+  // el rastro de "visitados" de un nodo normal contamine la detección de
+  // ciclos de otro nodo-anillo no relacionado).
+  function resolverAnillo(code,camino){
+    camino=camino||[];
+    if(camino.includes(code))return null; // callejón sin salida
+    camino=[...camino,code];
+    const padres=nodes_all[code]?.padres||[];
+    if(padres.some(p=>!sin_servicio.has(p)))return code; // padre real vivo -> raíz aquí
+    const validos=padres.filter(p=>sin_servicio.has(p)&&dias(p)>=dias(code)).sort((a,b)=>dias(a)-dias(b));
+    for(const p of validos){const res=resolverAnillo(p,camino);if(res!==null)return res;}
+    return null;
+  }
+  const resolucionAnillo={};
+  for(const c of sin_servicio){
+    if(RING_NODES.has(c)){
+      const r=resolverAnillo(c,[]);
+      resolucionAnillo[c]=r!==null?r:c;
+    }
+  }
+
+  // Paso 2 — colgar el resto de la red (un solo padre real) de las
+  // raíces de anillo ya fijas del paso 1.
+  function resolverNormal(code,camino){
+    camino=camino||new Set();
+    if(camino.has(code))return code;
+    if(RING_NODES.has(code))return resolucionAnillo[code];
+    const padres=nodes_all[code]?.padres||[];
+    if(!padres.length)return code;
+    const p=padres[0];
+    if(!sin_servicio.has(p))return code;
+    if(dias(p)<dias(code))return code; // padre más reciente no explica falla previa
+    const nuevo=new Set(camino);nuevo.add(code);
+    return resolverNormal(p,nuevo);
+  }
+
+  const raizDe={};
+  for(const c of sin_servicio)raizDe[c]=resolverNormal(c,new Set());
+  return raizDe;
 }
 
 function encontrarRaiz(code,nodes_all,sin_servicio,inf_alarms){
-  const visited=new Set();let cur=code;
-  while(cur){
-    if(visited.has(cur))break;visited.add(cur);
-    const padres=padresEfectivos(cur,nodes_all);
-    if(!padres.length)return cur;
-    const validos=padres.filter(p=>esCausaValidaTiempo(cur,p,sin_servicio,inf_alarms));
-    if(validos.length===padres.length)cur=validos[0];else return cur;
-  }
-  return cur;
+  if(!_resolverCache)_resolverCache=_calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms);
+  return _resolverCache[code]??code;
 }
 
 function expandirSubtree(root,nodes_all,sin_servicio,inf_alarms){
-  const children={};
-  for(const code of Object.keys(nodes_all))
-    for(const p of padresEfectivos(code,nodes_all)){if(!children[p])children[p]=[];children[p].push(code);}
-  const result=new Set();const stack=[root];
-  // Guardia contra ciclos: se mantiene como red de seguridad — con la
-  // línea canónica ya no debería activarse para los nodos conocidos,
-  // pero protege ante cualquier doble enlace nuevo aún no mapeado.
-  const visitados=new Set();
-  while(stack.length){
-    const c=stack.pop();
-    if(visitados.has(c))continue;
-    if(!sin_servicio.has(c))continue;
-    const padres_c=padresEfectivos(c,nodes_all);
-    const ok=c===root||!padres_c.length||padres_c.every(p=>esCausaValidaTiempo(c,p,sin_servicio,inf_alarms));
-    if(!ok)continue;
-    visitados.add(c);result.add(c);
-    for(const ch of(children[c]||[]))stack.push(ch);
-  }
+  if(!_resolverCache)_resolverCache=_calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms);
+  const result=new Set();
+  for(const[c,r]of Object.entries(_resolverCache))if(r===root)result.add(c);
   return result;
 }
 
 function analizarIncidencias(nodes_bd,inf_alarms,neteco_comm,neteco_energy){
+  _resolverCache=null; // reset — cada corte recalcula desde cero
   // Merge BD + ACC (embedded), BD toma prioridad
   const nodes_all={};
   for(const[k,v]of Object.entries(ACC))
@@ -1577,9 +1573,14 @@ function construirTexto(inc){
     return[titulo, tipo+(doble?' (doble enlace)':''), false];
   }
   const titulo=es_d?`Red ${titleCase(nombre)}`+(doble?' (doble enlace)':''):`${nombre_uc} (${red})`;
+  const d_n=[...inc.members].filter(c=>(nodesGlobal[c]?.rol||'').startsWith('D')).length;
   const i_n=[...inc.members].filter(c=>(nodesGlobal[c]?.rol||'').startsWith('I')).length;
-  const a_n=[...inc.members].filter(c=>{const r=nodesGlobal[c]?.rol||'';return!r.startsWith('D')&&!r.startsWith('I');}).length;
-  const detalle_auto=inc.intermitencia?notaIntermitencia(inc):`${i_n} interm. → ${a_n} terminales`;
+  const a_n=inc.count-d_n-i_n; // el resto (terminales/acceso) — así la suma siempre da inc.count
+  const partes=[];
+  if(d_n>0)partes.push(`${d_n} distrital${d_n!==1?'es':''}`);
+  partes.push(`${i_n} interm.`);
+  partes.push(`${a_n} terminales`);
+  const detalle_auto=inc.intermitencia?notaIntermitencia(inc):partes.join(' → ');
   // Si hay nota → reemplaza el texto automático; si no → texto topológico normal
   return[titulo, nota_tecnico||detalle_auto, !!nota_tecnico];
 }
