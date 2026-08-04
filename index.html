@@ -1027,6 +1027,12 @@ function draw(){
   for(let x=gox;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
   for(let y=goy;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
   const{alc,fallen}=calcImpacto();
+  // Merge sin_servicio para que nodos con alarma pero sin corte de transporte
+  // (ej. CCPP P.NUEVO con anillo intacto) muestren igualmente su punto rojo.
+  const fallenAll=new Set(fallen);
+  if(resultados_global&&resultados_global.sin_servicio){
+    for(const c of resultados_global.sin_servicio)fallenAll.add(c);
+  }
   if(sc>0.45){
     const labs=[{x:410,y:545,t:'ANILLO COSTA',c:'#f59e0b'},{x:550,y:307,t:'ANILLO NORTE',c:'#38bdf8'},{x:220,y:165,t:'ANILLO INTERIOR',c:'#4ade80'}];
     ctx.textAlign='center';
@@ -1068,7 +1074,7 @@ function draw(){
     // aislado = no alcanzable desde LAS_BRISAS (por corte manual O auto — ambos vía BFS)
     const aislado=!alc.has(id);
     const hasDist=NTD[id];
-    const distCaido=hasDist&&fallen.has(hasDist);
+    const distCaido=hasDist&&fallenAll.has(hasDist);
     const isCore=nt.tipo==='CORE';
     const r=Math.max(5,(isCore?13:9)*Math.min(sc,1.6));
     const _isBlk=blinkNtIds.has(id)&&!aislado;
@@ -1712,10 +1718,22 @@ function buildNtdRev(){
 function actualizarSimulador(sin_servicio){
   if(!ntd_rev)buildNtdRev();
   cortados_auto.clear();
+  // ── Regla CCPP PUEBLO NUEVO (LA00730) ─────────────────────────────
+  // Nodo con doble enlace entre FERREÑAFE (LA00303) y MOCHUMI (LA00390)
+  // en el Anillo Norte. Si AMBOS vecinos están activos (sin alarma), el
+  // acceso cae de forma aislada: el tramo del anillo queda intacto y
+  // NO se corta en la topología. El nodo distrital sigue siendo rojo.
+  // Si cualquier vecino está caído → comportamiento estándar (corte normal).
+  const ccppAnilloIntacto=sin_servicio.has('LA00730')&&
+    !sin_servicio.has('LA00303')&&   // FERREÑAFE activo
+    !sin_servicio.has('LA00390');    // MOCHUMI activo
+  // ──────────────────────────────────────────────────────────────────
   // Para cada distrital sin servicio → cortar todos sus enlaces en la topología
   for(const code of sin_servicio){
     const ntId=ntd_rev[code];
     if(!ntId)continue;
+    // CCPP P.NUEVO con vecinos activos: tramo del anillo intacto, no cortar
+    if(code==='LA00730'&&ccppAnilloIntacto)continue;
     for(const[a,b]of ENL.map(e=>[e[0],e[1]])){
       if(a===ntId||b===ntId)cortados_auto.add(a+'|'+b);
     }
