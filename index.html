@@ -1281,10 +1281,8 @@ function parseInfinera(b64,infinera_map){
     const durStr=iDur>=0?(row[iDur]||'0:0:0:0'):'0:0:0:0';
     const dp=durStr.split(':');
     const days=parseInt(dp[0])||0;
-    // Duración completa en segundos — precisión sub-día para comparaciones del mismo corte
-    const dur_secs=days*86400+(parseInt(dp[1])||0)*3600+(parseInt(dp[2])||0)*60+(parseInt(dp[3])||0);
     const onTimeStr=iTime>=0?(row[iTime]||''):'';
-    if(!alarms[code])alarms[code]={days,dur_secs,on_time:onTimeStr};
+    if(!alarms[code])alarms[code]={days,on_time:onTimeStr};
   }
   // Contar solo filas con alarmas REALES (excluir PRUEBA y vacías)
   const realRows=lines.slice(1).filter(l=>{
@@ -1419,11 +1417,6 @@ let _resolverCache=null;
 
 function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
   const dias=c=>inf_alarms[c]?.days??0;
-  const secs=c=>inf_alarms[c]?.dur_secs??0;
-  // masAntiguo: ¿el padre ha caído igual o más tiempo que el hijo?
-  // Usa dur_secs cuando los días son iguales (precisión sub-día para varios
-  // nodos que caen el mismo día: evita absorber hijos que cayeron ANTES).
-  const masAntiguo=(p,h)=>dias(p)!==dias(h)?dias(p)>dias(h):secs(p)>=secs(h);
   const RING_NODES=new Set(Object.keys(nodes_all).filter(c=>(nodes_all[c].padres||[]).length>1));
 
   // Paso 1 — resolver SOLO los nodos-anillo, de forma aislada (evita que
@@ -1435,7 +1428,7 @@ function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
     camino=[...camino,code];
     const padres=nodes_all[code]?.padres||[];
     if(padres.some(p=>!sin_servicio.has(p)))return code; // padre real vivo -> raíz aquí
-    const validos=padres.filter(p=>sin_servicio.has(p)&&masAntiguo(p,code)).sort((a,b)=>secs(b)-secs(a));
+    const validos=padres.filter(p=>sin_servicio.has(p)&&dias(p)>=dias(code)).sort((a,b)=>dias(a)-dias(b));
     for(const p of validos){const res=resolverAnillo(p,camino);if(res!==null)return res;}
     return null;
   }
@@ -1457,7 +1450,7 @@ function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
     if(!padres.length)return code;
     const p=padres[0];
     if(!sin_servicio.has(p))return code;
-    if(!masAntiguo(p,code))return code; // padre más reciente → falla previa independiente
+    if(dias(p)<dias(code))return code; // padre más reciente no explica falla previa
     const nuevo=new Set(camino);nuevo.add(code);
     return resolverNormal(p,nuevo);
   }
