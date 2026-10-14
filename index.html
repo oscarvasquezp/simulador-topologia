@@ -1318,8 +1318,9 @@ function parseNetEco(b64,neteco_map){
   const ws=wb.Sheets[wb.SheetNames[0]];
   const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
   // Columnas fijas (iguales en XLSX y CSV):
-  // 0=_, 1=Severity, 2=Name(alarma), 3=Site Name, 4=First Occurred
-  const SEV=1,ALARM=2,SITE=3,TIME=4;
+  // 0=_, 1=Severity, 2=Name(alarma), 3=Site Name, 4=First Occurred,
+  // ..., 8=Location Info  (contiene "Site ID:LAxxxxx; nombre" — fallback de matching)
+  const SEV=1,ALARM=2,SITE=3,TIME=4,LOC_INFO=8;
 
   // ── Detección dinámica del header (soporta XLSX con 5 filas de cabecera
   //    y CSV con 8 filas de cabecera, sin hardcodear el número de skip) ──
@@ -1336,7 +1337,16 @@ function parseNetEco(b64,neteco_map){
     const alarm=String(r[ALARM]||'').trim();
     const site=String(r[SITE]||'').trim().toUpperCase();
     const time_str=String(r[TIME]||'').trim();
-    const code=neteco_map[site];if(!code)continue;
+    // Matching primario: por nombre de sitio
+    let code=neteco_map[site];
+    // Fallback: "Site ID:LAxxxxx" en Location Info
+    // (resuelve discrepancias ej. LAGUNAS_(CANASLOCHE) vs LAGUNAS o YENCALA_BOGGIANO_GARBANZAL vs YENCALA_GARBANZAL)
+    if(!code){
+      const loc=String(r[LOC_INFO]||'');
+      const m=loc.match(/Site ID:\s*([LC]A\d+)/i);
+      if(m)code=m[1];
+    }
+    if(!code)continue;
     if(NETECO_COMM.has(alarm)&&severity==='Critical'&&!neteco_comm[code]){
       neteco_comm[code]=time_str;
     }
@@ -3139,3 +3149,1055 @@ cargarTodo();   // carga automática al abrir la página
 </script>
 </body>
 </html>
+
+"""
+╔══════════════════════════════════════════════════════════════════╗
+║  Generador — Estado de la Red de Acceso Lambayeque   v10        ║
+║  Compatible con BD_AUTOMATIZACION_v6.xlsx (o posterior)         ║
+║                                                                  ║
+║  Cambios v10 (01-ago-2026):                                     ║
+║  · Algoritmo de anillo consciente de topología y tiempo,        ║
+║    reemplaza la tabla fija LINEA_CANONICA (v5-v9)               ║
+║  · Detección de "callejón sin salida" (nodos que solo se        ║
+║    explican mutuamente, ej. Morrope<->Lambayeque)               ║
+║  · Detalle de incidencia cuenta distritales, intermedios y      ║
+║    terminales por separado (antes solo interm./terminales)      ║
+║  · Validado 28-jul-2026: 219 nodos, 9 incidencias, cero         ║
+║    duplicados, coincide con verificación manual del operador    ║
+║  · Requiere BD_AUTOMATIZACION_v6+ (Cayaltí/La Victoria/         ║
+║    Monsefú/Picsi con padre real corregido)                      ║
+║                                                                  ║
+║  Cambios v4 (06-jun-2026):                                      ║
+║  · Multi-padre (DOBLE ENLACE): 15 nodos con ≥2 padres          ║
+║  · OYOTUN ahora es hijo jerárquico de NUEVA_ARICA en BD        ║
+║  · adj_map desde hoja TOPOLOGIA_DISTRITAL (canon.)             ║
+║  · Total oficial: 247 nodos                                     ║
+║                                                                  ║
+║  Dependencias: pip install python-pptx openpyxl pandas         ║
+║  Uso:          python generar_estado_red_lambayeque.py         ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+
+# ── Auto-instalación ──────────────────────────────────────────────
+import sys, subprocess
+for _pkg, _imp in [("python-pptx","pptx"),("openpyxl","openpyxl"),("pandas","pandas")]:
+    try: __import__(_imp)
+    except ImportError:
+        subprocess.check_call([sys.executable,"-m","pip","install",_pkg,"--quiet"])
+
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk, scrolledtext
+import threading, os, math, traceback, re
+from datetime import datetime
+from pathlib import Path
+from collections import defaultdict, Counter
+
+
+# ══════════════════════════════════════════════════════════════════
+#  CONSTANTES DE NEGOCIO
+# ══════════════════════════════════════════════════════════════════
+
+# Alarmas NetEco que indican pérdida de comunicación con el nodo
+NETECO_COMM_ALARMS = {
+    "Communication Between NMS And NE Is Abnormal",
+    "AC Failure/Communication Between NMS And NE Is Abnormal",
+}
+
+# Únicas alarmas de energía que determinan causa "Factor Energético"
+# (Mains Undervoltage, AC Undervoltage, etc. NO califican)
+# Únicas alarmas de energía que determinan causa "Factor Energético"
+# (Mains Undervoltage, AC Undervoltage, etc. NO califican)
+# NOTA (03-jul-2026): NetEco exporta el nombre corto "BLVD"/"LLVD", no el
+# nombre largo "BLVD Low Voltage Disconnected". Se dejan ambas formas por
+# seguridad ante cambios de formato del exportador.
+ENERGY_CAUSING_ALARMS = {
+    "AC Failure",
+    "Mains Failure",
+    "BLVD",
+    "LLVD",
+    "BLVD Low Voltage Disconnected",
+    "LLVD Low Voltage Disconnected",
+}
+
+DELTA_MAX_MIN = 10   # ventana de coincidencia Infinera ↔ NetEco (minutos)
+
+CAUSA_ORDEN = {
+    "PRONATEL":   0,   # 1° Transporte PRONATEL  (días desc)
+    "ENERGETICO": 1,   # 2° Factor Energético    (días desc)
+    "RADIO":      2,   # 3° Factor Radio          (días desc)
+    "POR_DEFINIR":3,   # 4° Por definir
+    "SOCIAL":     4,   # 5° Causa social
+}
+
+CAUSA_COLORS = {
+    "PRONATEL":   "B91C1C",
+    "ENERGETICO": "B45309",
+    "RADIO":      "1D4ED8",
+    "POR_DEFINIR":"6B21A8",
+    "SOCIAL":     "C2410C",
+}
+
+CAUSA_LABELS = {
+    "PRONATEL":   "Transporte PRONATEL",
+    "ENERGETICO": "Factor Energético",
+    "RADIO":      "Factor Radio",
+    "POR_DEFINIR":"Por definir",
+    "SOCIAL":     "Causa social",
+}
+
+# Códigos con causa social confirmada operacionalmente
+SOCIAL_OVERRIDE = {"LA00692"}   # SANTA_ISABEL – Olmos
+
+
+# ══════════════════════════════════════════════════════════════════
+#  CARGA DE DATOS
+# ══════════════════════════════════════════════════════════════════
+
+def _parse_codigos(raw):
+    """Extrae todos los LA##### o CA##### de un texto (separador | o salto de línea)."""
+    if not raw or str(raw).strip() in ("nan","—",""):
+        return []
+    return [c.strip() for c in re.findall(r"(?:LA|CA)\d+", str(raw))]
+
+
+def cargar_excel(xlsx_path):
+    """
+    Lee BD_AUTOMATIZACION_v6.xlsx (o compatible).
+    Hojas utilizadas:
+      · BD_COMPLETA         → nodos, padres (multi), INFINERA, ROL, ADY
+      · TOPOLOGIA_DISTRITAL → adj_map canónico entre distritales
+      · CONSULTA_IMPACTO    → DOBLE ENLACE flag
+      · NODOS_POR_RED       → total oficial
+
+    Retorna: nodes, infinera_map, adj_map, total_nodos
+      · nodes[code] = {code, name, red, tipo, rol,
+                       padres:[list], doble:bool, infinera}
+      · infinera_map = {INFINERA_UPPER: code}
+      · adj_map      = {code: set(códigos adyacentes)}  (bidireccional)
+    """
+    import pandas as pd
+
+    # ── BD_COMPLETA ─────────────────────────────────────────────
+    try:
+        xl = pd.read_excel(xlsx_path, sheet_name="BD_COMPLETA", header=None)
+    except Exception as e:
+        raise ValueError(
+            f"No se pudo leer la hoja 'BD_COMPLETA'.\n"
+            f"Verifica que el archivo sea correcto.\n\nDetalle: {e}")
+
+    h    = xl.iloc[1].tolist()
+    data = xl.iloc[2:].copy(); data.columns = h
+    data = data[
+        data["CÓDIGO"].notna() &
+        data["CÓDIGO"].astype(str).str.match(r"(?:LA|CA)\d+")
+    ].reset_index(drop=True)
+
+    if len(data) == 0:
+        raise ValueError("No se encontraron nodos válidos (LA##### o CA#####) en BD_COMPLETA.")
+
+    # ── DOBLE ENLACE desde CONSULTA_IMPACTO ─────────────────────
+    doble_map = {}
+    try:
+        ci   = pd.read_excel(xlsx_path, sheet_name="CONSULTA_IMPACTO", header=None)
+        ch   = ci.iloc[1].tolist()
+        cid  = ci.iloc[2:].copy(); cid.columns = ch
+        cid  = cid[cid["CÓDIGO"].notna() &
+                   cid["CÓDIGO"].astype(str).str.match(r"(?:LA|CA)\d+")]
+        for _, row in cid.iterrows():
+            code = str(row["CÓDIGO"]).strip()
+            dl   = str(row.get("DOBLE ENLACE","NO")).strip().upper()
+            doble_map[code] = dl in ("SÍ","SI","S","YES","Y")
+    except Exception:
+        pass   # si la hoja no existe, continuar sin DOBLE ENLACE
+
+    # ── Construir nodes ─────────────────────────────────────────
+    nodes = {}
+    for _, row in data.iterrows():
+        code   = str(row["CÓDIGO"]).strip()
+        padres = _parse_codigos(row.get("CÓD. PADRE",""))
+        nodes[code] = {
+            "code":     code,
+            "name":     str(row["NOMBRE NODO_NETECO"]).strip() if pd.notna(row["NOMBRE NODO_NETECO"]) else "",
+            "red":      str(row["RED DISTRITAL"]).strip()      if pd.notna(row["RED DISTRITAL"])      else "",
+            "tipo":     str(row["TIPO"]).strip()               if pd.notna(row["TIPO"])               else "",
+            "rol":      str(row["ROL"]).strip()                if pd.notna(row["ROL"])                else "",
+            "padres":   padres,
+            "doble":    doble_map.get(code, len(padres) > 1),
+            "infinera": str(row["NOMBRE INFINERA"]).strip()    if pd.notna(row["NOMBRE INFINERA"])    else "",
+        }
+
+    infinera_map = {v["infinera"].upper(): k for k, v in nodes.items() if v["infinera"]}
+
+    # ── adj_map desde TOPOLOGIA_DISTRITAL (bidireccional) ───────
+    adj_map = defaultdict(set)
+    try:
+        td   = pd.read_excel(xlsx_path, sheet_name="TOPOLOGIA_DISTRITAL", header=None)
+        td_h = td.iloc[1].tolist()
+        td_d = td.iloc[2:].copy(); td_d.columns = td_h
+        cur  = None
+        for _, row in td_d.iterrows():
+            if pd.notna(row["CÓD. NODO D1"]):
+                cur = str(row["CÓD. NODO D1"]).strip()
+            if cur and pd.notna(row["CÓD. ADYACENTE"]):
+                adj = str(row["CÓD. ADYACENTE"]).strip()
+                if re.match(r"(?:LA|CA)\d+", adj):
+                    adj_map[cur].add(adj)
+                    adj_map[adj].add(cur)    # bidireccional
+    except Exception:
+        # fallback: construir adj desde col 14 de BD_COMPLETA
+        for code, node in nodes.items():
+            raw = data[data["CÓDIGO"]==code]["NODOS DISTRITALES ADYACENTES"].values
+            if len(raw) and pd.notna(raw[0]):
+                for adj in _parse_codigos(raw[0]):
+                    adj_map[code].add(adj)
+                    adj_map[adj].add(code)
+
+    # ── Total oficial desde NODOS_POR_RED ───────────────────────
+    total = len(nodes)
+    try:
+        nr  = pd.read_excel(xlsx_path, sheet_name="NODOS_POR_RED", header=None)
+        nh  = nr.iloc[1].tolist()
+        nrd = nr.iloc[2:].copy(); nrd.columns = nh
+        nrd = nrd[
+            nrd["RED DISTRITAL"].notna() &
+            ~nrd["RED DISTRITAL"].astype(str).str.upper().str.contains("TOTAL")
+        ]
+        total = int(nrd["TOTAL NODOS"].sum())
+    except Exception:
+        pass
+
+    return nodes, infinera_map, dict(adj_map), total
+
+
+def cargar_infinera_csv(csv_path, infinera_map):
+    """Lee alarmas activas Infinera (CSV ;).
+    Retorna: {code: {on_time, days}}"""
+    import pandas as pd
+
+    df = None
+    for enc in ["utf-8-sig","utf-8","latin-1","cp1252"]:
+        try: df = pd.read_csv(csv_path, sep=";", encoding=enc); break
+        except Exception: continue
+    if df is None:
+        raise ValueError(f"No se pudo leer el CSV Infinera:\n{csv_path}")
+    if "Node Name" not in df.columns:
+        raise ValueError(
+            f"CSV sin columna 'Node Name'.\n"
+            f"Columnas encontradas: {', '.join(df.columns[:8].tolist())}")
+
+    df = df[~df["Node Name"].astype(str).str.contains("PRUEBA", case=False, na=False)]
+
+    result = {}; sin_match = []
+    for _, row in df.iterrows():
+        name = str(row["Node Name"]).strip().upper()
+        code = infinera_map.get(name)
+        if code:
+            parts = str(row.get("Duration","0:0:0:0")).split(":")
+            days  = int(parts[0]) if parts and parts[0].isdigit() else 0
+            result[code] = {
+                "on_time": datetime.strptime(str(row["On-Time"])[:19],"%Y-%m-%d %H:%M:%S"),
+                "days":    days,
+            }
+        else:
+            sin_match.append(name)
+
+    if not result:
+        raise ValueError(
+            "Ningún nodo del CSV Infinera cruzó con la BD.\n\n"
+            "Primeros sin coincidencia:\n" + "\n".join(sin_match[:6]))
+    return result
+
+
+def cargar_neteco_xlsx(xlsx_path, neteco_name_map):
+    """Lee CurrentAlarms*.xlsx (NetEco).
+    Retorna: neteco_comm {code→datetime}, neteco_energy {code→[{type,on_time}]}"""
+    import pandas as pd
+
+    try:
+        xl = pd.read_excel(xlsx_path, header=None, skiprows=5)
+    except Exception as e:
+        raise ValueError(f"No se pudo leer el XLSX NetEco:\n{e}")
+
+    xl.columns = ["_","Severity","Name","Site Name","First Occurred",
+                  "Device Type","Manage Domain","Device","Location Info"]
+    xl = xl[xl["Name"].notna()].reset_index(drop=True)
+    xl["First Occurred"] = pd.to_datetime(xl["First Occurred"], errors="coerce")
+
+    neteco_comm   = {}
+    neteco_energy = defaultdict(list)
+
+    import re as _re
+    for _, row in xl.iterrows():
+        alarm = str(row["Name"]).strip()
+        site  = str(row["Site Name"]).strip().upper()
+        # Matching primario: por nombre de sitio (BD nombre → código)
+        code  = neteco_name_map.get(site)
+        # Fallback: parsear "Site ID:LAxxxxx" del campo Location Info
+        # (resuelve discrepancias de nombre entre Infinera y NetEco,
+        #  p.ej. LAGUNAS_(CANASLOCHE) vs LAGUNAS, o YENCALA_BOGGIANO_GARBANZAL vs YENCALA_GARBANZAL)
+        if not code:
+            loc = str(row.get("Location Info", ""))
+            m = _re.search(r'Site ID:\s*([LC]A\d+)', loc, _re.IGNORECASE)
+            if m:
+                code = m.group(1)
+        if not code:
+            continue
+        if alarm in NETECO_COMM_ALARMS:
+            if str(row["Severity"]) == "Critical" and code not in neteco_comm:
+                neteco_comm[code] = row["First Occurred"]
+        if alarm in ENERGY_CAUSING_ALARMS:
+            neteco_energy[code].append({"type": alarm, "on_time": row["First Occurred"]})
+
+    return neteco_comm, dict(neteco_energy)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  LÓGICA DE ANÁLISIS
+# ══════════════════════════════════════════════════════════════════
+
+def _tiene_energia_previa(code, comm_time, neteco_energy):
+    import pandas as pd
+    for e in neteco_energy.get(code, []):
+        if pd.notna(e["on_time"]) and comm_time is not None and pd.notna(comm_time):
+            if e["on_time"] < comm_time:
+                return True, e["type"], e["on_time"]
+    return False, None, None
+
+
+def _coincide_temporal(inf_time, net_time):
+    import pandas as pd
+    if inf_time is None or net_time is None or pd.isna(net_time):
+        return False, None
+    delta = abs((inf_time - net_time).total_seconds()) / 60
+    return delta <= DELTA_MAX_MIN, round(delta, 1)
+
+
+def clasificar_nodo_raiz(code, nodes, inf_alarms, neteco_comm, neteco_energy):
+    """
+    Clasifica la CAUSA del nodo raíz de una incidencia.
+    Los dependientes heredan esta causa; no se re-evalúan individualmente.
+
+    Orden de evaluación:
+      1. Override social (SOCIAL_OVERRIDE)
+      2. Sin alarma en NetEco  → POR_DEFINIR
+      3. Energía válida PREVIA a comm → ENERGETICO
+      4. Distrital D* + sin energía → PRONATEL
+      5. Intermedio/Terminal  + sin energía → RADIO
+    """
+    if code in SOCIAL_OVERRIDE:
+        return "SOCIAL", "Confirmado caso social"
+
+    if code not in inf_alarms:
+        return "OPERATIVO", ""
+    if code not in neteco_comm:
+        return "POR_DEFINIR", "Solo en Infinera, sin alarma NetEco"
+
+    inf_time = inf_alarms[code]["on_time"]
+    net_time = neteco_comm[code]
+    rol      = nodes.get(code, {}).get("rol", "")
+
+    hay_nrg, tipo_nrg, t_nrg = _tiene_energia_previa(code, net_time, neteco_energy)
+    if hay_nrg:
+        return "ENERGETICO", f"{tipo_nrg} @ {t_nrg}"
+
+    coincide, delta = _coincide_temporal(inf_time, net_time)
+    nota = f"Δt={delta}min" if delta is not None else "sin delta"
+    if not coincide:
+        nota += " (>10min, revisar)"
+
+    return ("PRONATEL" if rol.startswith("D") else "RADIO"), nota
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  RESOLUCIÓN DE INCIDENCIAS — algoritmo consciente de topología de
+#  anillo  ·  upgrade 01-ago-2026
+#  ------------------------------------------------------------------
+#  Reemplaza la tabla fija LINEA_CANONICA (v5-v9) por una regla general:
+#
+#  1) Para nodos con 2+ padres reales (anillo -- doble/triple enlace):
+#     se prueba cada camino posible, del MÁS RECIENTE al más antiguo
+#     (por días caído), y se toma el primero que efectivamente llega
+#     a un nodo CON servicio real. Un camino que solo vuelve sobre sí
+#     mismo (dos nodos que se explican mutuamente, sin salida) se
+#     descarta -- es un "callejón sin salida" (ver caso Morrope<->
+#     Lambayeque, ambos a 9 días, ninguno relaya al otro).
+#
+#  2) Para el resto de la red (un solo padre real): sube al padre
+#     SOLO SI el padre lleva caído igual o más tiempo que el hijo.
+#     Si el padre es más reciente, no puede explicar una falla más
+#     antigua del hijo -- el hijo queda como su propia raíz.
+#
+#  Validado el 28-jul-2026 contra corte real: 219 nodos, 9 incidencias,
+#  cero duplicados, coincide nodo por nodo con el análisis manual del
+#  operador (caso Red Luya absorbiendo Mochumi/Illimo/Túcume vía el
+#  Anillo Norte, tras la caída de Morrope que dejó unidireccional el
+#  Anillo Interior).
+#
+#  Requiere BD_AUTOMATIZACION_v6 (o posterior) para que Cayaltí, La
+#  Victoria, Monsefú y Picsi tengan su padre real correcto. Con la BD
+#  v5 original, Cayaltí puede aparecer como incidencia separada (10 en
+#  vez de 9) -- ver hoja CAMBIOS_V5_A_V6 del archivo
+#  BD_AUTOMATIZACION_v6.xlsx para el detalle de qué cambia y por qué.
+# ═══════════════════════════════════════════════════════════════════
+
+def _dias(code, inf_alarms):
+    return inf_alarms.get(code, {}).get("days", 0)
+
+
+def _resolver_anillo(code, nodes, sin_servicio, inf_alarms, ring_nodes, camino=None):
+    """Resuelve UN nodo-anillo de forma aislada. Prueba cada padre real,
+    del más reciente al más antiguo, y devuelve el primero que llega a
+    un nodo con servicio real. None si todos los caminos son callejón
+    sin salida (ciclo que solo se explica a sí mismo)."""
+    camino = camino or []
+    if code in camino:
+        return None
+    camino = camino + [code]
+    padres = nodes[code]["padres"]
+    if any(p not in sin_servicio for p in padres):
+        return code  # padre real vivo -> raíz aquí
+    validos = sorted(
+        [p for p in padres if p in sin_servicio and _dias(p, inf_alarms) >= _dias(code, inf_alarms)],
+        key=lambda p: _dias(p, inf_alarms),
+    )
+    for p in validos:
+        res = _resolver_anillo(p, nodes, sin_servicio, inf_alarms, ring_nodes, camino)
+        if res is not None:
+            return res
+    return None
+
+
+def _calcular_resolucion_completa(nodes, sin_servicio, inf_alarms):
+    """Calcula la raíz final de CADA nodo caído, en dos pasadas:
+    1) los nodos-anillo se resuelven de forma aislada (evita que el
+       rastro de una cadena normal contamine la detección de ciclos
+       de un nodo-anillo no relacionado);
+    2) el resto de la red (un solo padre real) cuelga de esas raíces
+       ya fijas, validando que el padre no sea más reciente que el hijo.
+    """
+    ring_nodes = {c for c, n in nodes.items() if len(n["padres"]) > 1}
+
+    resolucion_anillo = {}
+    for c in sin_servicio:
+        if c in ring_nodes:
+            r = _resolver_anillo(c, nodes, sin_servicio, inf_alarms, ring_nodes)
+            resolucion_anillo[c] = r if r is not None else c
+
+    def resolver_normal(code, camino=None):
+        camino = camino or set()
+        if code in camino:
+            return code
+        if code in ring_nodes:
+            return resolucion_anillo[code]
+        padres = nodes[code]["padres"]
+        if not padres:
+            return code
+        p = padres[0]
+        if p not in sin_servicio:
+            return code
+        if _dias(p, inf_alarms) < _dias(code, inf_alarms):
+            return code  # padre más reciente no explica falla previa
+        return resolver_normal(p, camino | {code})
+
+    return {c: resolver_normal(c) for c in sin_servicio}
+
+
+def encontrar_raiz_jerarquica(code, nodes, sin_servicio, inf_alarms, _cache={}):
+    """Wrapper con caché — calcula la resolución completa una sola vez
+    por corte (misma sin_servicio) y la reutiliza para cada consulta."""
+    key = id(sin_servicio)
+    if _cache.get("key") != key:
+        _cache["key"] = key
+        _cache["resolucion"] = _calcular_resolucion_completa(nodes, sin_servicio, inf_alarms)
+    return _cache["resolucion"].get(code, code)
+
+
+def expandir_subtree(root, nodes, sin_servicio, inf_alarms):
+    """Devuelve todos los nodos cuya raíz final (ver encontrar_raiz_jerarquica)
+    es exactamente `root`. Reutiliza la misma caché -- no recalcula nada
+    si ya se llamó encontrar_raiz_jerarquica con este mismo sin_servicio."""
+    return {c for c in sin_servicio
+            if encontrar_raiz_jerarquica(c, nodes, sin_servicio, inf_alarms) == root}
+
+
+def analizar_incidencias(nodes, inf_alarms, neteco_comm, neteco_energy,
+                         adj_map=None):
+    """
+    Algoritmo principal v4:
+      1. sin_servicio = nodos con alarma Infinera (fuente primaria)
+      2. Raíz jerárquica por BD, respetando DOBLE ENLACE
+      3. Agrupar por raíz → subtree
+      4. Causa = clasificar solo el nodo raíz; dependientes heredan
+      5. Días = max(days del grupo)
+      6. Detectar intermitencia D* (raíz con menos días que sus hijos)
+      7. Ordenar: PRONATEL → ENERGETICO → POR_DEFINIR → SOCIAL → RADIO
+    """
+    if adj_map is None:
+        adj_map = {}
+
+    sin_servicio = set(inf_alarms.keys())
+    if not sin_servicio:
+        return [], sin_servicio
+
+    # Paso 2: raíz jerárquica
+    real_roots     = {c: encontrar_raiz_jerarquica(c, nodes, sin_servicio, inf_alarms)
+                      for c in sin_servicio}
+    groups_by_root = defaultdict(set)
+    for c in sin_servicio:
+        groups_by_root[real_roots[c]].add(c)
+
+    # Paso 3-6: construir incidencias
+    incidencias = []
+    for root, members in groups_by_root.items():
+        causa, detalle_causa = clasificar_nodo_raiz(
+            root, nodes, inf_alarms, neteco_comm, neteco_energy)
+        root_days = inf_alarms[root]["days"]
+        max_days  = max(inf_alarms[m]["days"] for m in members)
+
+        # Distribución de días: {días: [lista de códigos]}
+        days_dist = defaultdict(list)
+        for m in members:
+            days_dist[inf_alarms[m]["days"]].append(m)
+
+        incidencias.append({
+            "root":          root,
+            "members":       members,
+            "count":         len(members),
+            "causa":         causa,
+            "detalle_causa": detalle_causa,
+            "days":          root_days,       # días del nodo raíz (manda la RED)
+            "root_days":     root_days,
+            "max_days":      max_days,
+            "days_dist":     dict(days_dist),
+            "on_time":       inf_alarms[root]["on_time"],
+            "intermitencia": max_days != root_days,
+        })
+
+    # Paso 7: PRONATEL/Energético/Radio/Social, luego días DESCENDENTE
+    incidencias.sort(key=lambda x: (CAUSA_ORDEN.get(x["causa"], 9), -x["root_days"]))
+    return incidencias, sin_servicio
+
+
+# ══════════════════════════════════════════════════════════════════
+#  CONSTRUCCIÓN DE TEXTOS PARA LA TABLA
+# ══════════════════════════════════════════════════════════════════
+
+def _nota_intermitencia(inc, nodes):
+    """
+    Genera texto de intermitencia con distribución de días por grupos.
+    Ejemplo: "⚠ INCAHUASI + 16 dep. - 1 día  |  3 dep. - 38 días"
+    """
+    root      = inc["root"]
+    root_name = nodes[root]["name"].replace("_"," ").capitalize()
+    dist      = inc["days_dist"]               # {días: [codes]}
+
+    parts = []
+    for d in sorted(dist.keys()):
+        codes = dist[d]
+        n     = len(codes)
+        dias_str = f"{d} día" + ("s" if d != 1 else "")
+        if root in codes:
+            n_dep = n - 1
+            if n_dep > 0:
+                parts.append(f"{root_name} + {n_dep} dep. — {dias_str}")
+            else:
+                parts.append(f"{root_name} — {dias_str}")
+        else:
+            parts.append(f"{n} dep. — {dias_str}")
+
+    return "⚠ " + "  |  ".join(parts)
+
+
+def construir_textos_incidencia(inc, nodes):
+    """
+    Devuelve (titulo, detalle) para la fila de la tabla.
+
+    Reglas de título (sin identificadores de rol):
+      · Distrital con varios nodos  → "RED [NOMBRE]"
+      · Distrital aislado           → "[NOMBRE] ([RED])"
+      · Intermedio / terminal       → "[NOMBRE] ([RED])"
+      · Causa social                → "[NOMBRE] ([RED])"
+
+    Reglas de detalle:
+      · Sin intermitencia: "N interm. → M terminales" (sin código de rol)
+      · Con intermitencia: nota ⚠ con distribución de días por grupo
+    """
+    root   = inc["root"]
+    n_root = nodes.get(root, {})
+    red    = n_root.get("red", "")
+    nombre = n_root.get("name", root).replace("_"," ").upper()
+    nombre_cap = n_root.get("name", root).replace("_"," ").capitalize()
+    doble  = n_root.get("doble", False)
+    es_d   = n_root.get("rol","").startswith("D")
+
+    # ── 1 nodo ────────────────────────────────────────────────────
+    if inc["count"] == 1:
+        if inc["causa"] == "SOCIAL":
+            return f"{nombre} ({red})", "Nodo terminal aislado, gestión en campo"
+        tipo = "Nodo distrital aislado" if es_d else "Nodo aislado"
+        if doble:
+            tipo += " (doble enlace)"
+        return f"{nombre} ({red})", tipo
+
+    # ── Varios nodos ──────────────────────────────────────────────
+    members = inc["members"]
+    d_nodes = [c for c in members if nodes[c]["rol"].startswith("D")]
+    i_nodes = [c for c in members if nodes[c]["rol"].startswith("I")]
+    a_count = len(members) - len(d_nodes) - len(i_nodes)  # el resto (terminales/acceso)
+
+    if es_d:
+        titulo  = f"Red {nombre.title()}"
+        if doble:
+            titulo += " (doble enlace)"
+    else:
+        titulo = f"{nombre} ({red})"
+
+    # Detalle: sin intermitencia → resumen de árbol
+    if not inc["intermitencia"]:
+        partes = []
+        if d_nodes:
+            partes.append(f"{len(d_nodes)} distrital{'es' if len(d_nodes)!=1 else ''}")
+        partes.append(f"{len(i_nodes)} interm.")
+        partes.append(f"{a_count} terminales")
+        detalle = " → ".join(partes)
+    else:
+        # Con intermitencia → nota con distribución de días
+        detalle = _nota_intermitencia(inc, nodes)
+
+    return titulo, detalle
+
+
+# ══════════════════════════════════════════════════════════════════
+#  GENERACIÓN PPTX
+# ══════════════════════════════════════════════════════════════════
+
+def generar_pptx(incidencias, sin_servicio, total_nodos, nodes,
+                 neteco_comm, neteco_energy, fecha_str, dest_folder):
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    def rgb(h): return RGBColor(int(h[0:2],16),int(h[2:4],16),int(h[4:6],16))
+
+    def add_rect(slide, l,t,w,h, fill=None, line=None, lw=None):
+        s = slide.shapes.add_shape(1,Inches(l),Inches(t),Inches(w),Inches(h))
+        if fill: s.fill.solid(); s.fill.fore_color.rgb = rgb(fill)
+        else:    s.fill.background()
+        if line:
+            s.line.color.rgb = rgb(line)
+            if lw: s.line.width = Pt(lw)
+        else:    s.line.fill.background()
+        return s
+
+    def add_text(slide, text, l,t,w,h, sz=11, bold=False,
+                 color="000000", align=PP_ALIGN.LEFT, font="Calibri"):
+        txb = slide.shapes.add_textbox(Inches(l),Inches(t),Inches(w),Inches(h))
+        txb.word_wrap = True; tf = txb.text_frame; tf.word_wrap = True
+        p = tf.paragraphs[0]; p.alignment = align
+        run = p.add_run(); run.text = text
+        run.font.size = Pt(sz); run.font.bold = bold
+        run.font.color.rgb = rgb(color); run.font.name = font
+        return txb
+
+    def draw_donut_segment(slide, cx, cy, r_out, r_in, sd, ed, chex):
+        steps   = max(20, int((ed-sd)/4))
+        po = [(cx+r_out*math.cos(math.radians(sd+(ed-sd)*s/steps)),
+               cy+r_out*math.sin(math.radians(sd+(ed-sd)*s/steps)))
+              for s in range(steps+1)]
+        pi = [(cx+r_in*math.cos(math.radians(ed-(ed-sd)*s/steps)),
+               cy+r_in*math.sin(math.radians(ed-(ed-sd)*s/steps)))
+              for s in range(steps+1)]
+        pts = po + pi
+        b = slide.shapes.build_freeform(Inches(pts[0][0]),Inches(pts[0][1]))
+        b.add_line_segments([(Inches(p[0]),Inches(p[1])) for p in pts[1:]], close=True)
+        seg = b.convert_to_shape()
+        seg.fill.solid(); seg.fill.fore_color.rgb = rgb(chex)
+        seg.line.fill.background()
+
+    # ── métricas ──────────────────────────────────────────────────
+    nodos_sin = len(sin_servicio)
+    nodos_con = total_nodos - nodos_sin
+    pct_con   = nodos_con / total_nodos * 100
+    pct_sin   = nodos_sin / total_nodos * 100
+    n_inc     = len(incidencias)
+    causa_counts = Counter()
+    for inc in incidencias:
+        causa_counts[inc["causa"]] += inc["count"]
+
+    prs = Presentation()
+    prs.slide_width  = Inches(13.33); prs.slide_height = Inches(7.5)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    # ─── HEADER ──────────────────────────────────────────────────
+    add_rect(slide, 0, 0, 13.33, 0.85, fill="1B3A6B")
+    add_text(slide, "Estado de la Red de Acceso — Lambayeque",
+             0.18, 0.06, 9.5, 0.42, sz=22, bold=True, color="FFFFFF")
+    add_text(slide, "Operación y Mantenimiento",
+             0.18, 0.50, 6, 0.28, sz=11, color="A8C4E0")
+    add_text(slide, fecha_str,
+             9.5, 0.26, 3.65, 0.32, sz=11, color="A8C4E0", align=PP_ALIGN.RIGHT)
+
+    # ─── KPI CARDS ───────────────────────────────────────────────
+    cards = [
+        ("TOTAL DE NODOS",     str(total_nodos), "Red de acceso PRONATEL",    "1B3A6B","E8EEF7"),
+        ("CON SERVICIO",       str(nodos_con),   f"{pct_con:.1f}% del total", "16A34A","F0FDF4"),
+        ("SIN SERVICIO",       str(nodos_sin),   f"{pct_sin:.1f}% del total", "DC2626","FEF2F2"),
+        ("INCIDENCIAS ACTIVAS",str(n_inc),       "Reportadas al cierre",      "D97706","FFFBEB"),
+    ]
+    cw=3.08; ch=1.18; ct=0.98; gap=0.13
+    for i,(label,val,sub,bc,bg) in enumerate(cards):
+        x = 0.15 + i*(cw+gap)
+        add_rect(slide, x, ct, cw, ch, fill=bg, line=bc, lw=1.2)
+        add_rect(slide, x, ct, 0.045, ch, fill=bc)
+        add_text(slide, label, x+0.12, ct+0.07, cw-0.2, 0.22, sz=8.5, bold=True, color=bc)
+        add_text(slide, val,   x+0.12, ct+0.28, cw-0.2, 0.56, sz=38,  bold=True, color=bc)
+        add_text(slide, sub,   x+0.12, ct+0.88, cw-0.2, 0.22, sz=8.5, color="6B7280")
+
+    # ─── TÍTULO SECCIÓN ──────────────────────────────────────────
+    add_text(slide, "Incidencias activas",
+             0.15, 2.32, 7.5, 0.28, sz=13, bold=True, color="111827")
+    add_text(slide,
+             "Nodo raíz de cada incidencia con total de nodos impactados en cascada  ·  "
+             "Escalamientos vigentes — NOC (Rosario Mauricio).",
+             0.15, 2.58, 8.8, 0.22, sz=8, color="6B7280")
+
+    # ─── TABLA ───────────────────────────────────────────────────
+    tl=0.15; tt=2.82
+    col_w = [0.32, 5.45, 0.85, 0.65, 1.68]
+    hdr_lbl = ["#",
+               "Nodo raíz / Red afectada (nodos impactados en cascada)",
+               "Nodos\ntotales","Días","Causa raíz"]
+    hh = 0.36
+    add_rect(slide, tl, tt, sum(col_w), hh, fill="1B3A6B")
+    x = tl
+    for idx,(txt,w) in enumerate(zip(hdr_lbl, col_w)):
+        al = PP_ALIGN.CENTER if idx in (0,2,3) else PP_ALIGN.LEFT
+        add_text(slide, txt, x+0.04, tt+0.04, w-0.06, hh-0.06,
+                 sz=8, bold=True, color="FFFFFF", align=al)
+        x += w
+
+    # Altura de fila dinámica
+    _esp    = 7.08 - tt - hh
+    rh      = min(0.68, max(0.45, _esp / n_inc)) if n_inc else 0.68
+    sz_tit  = 10 if rh >= 0.60 else (9 if rh >= 0.52 else 8)
+    sz_det  = 8.5 if rh >= 0.60 else (8 if rh >= 0.52 else 7.5)
+    sz_num  = 20  if rh >= 0.60 else (16 if rh >= 0.52 else 13)
+    sz_cau  = 9   if rh >= 0.60 else (8 if rh >= 0.52 else 7.5)
+    off_num = rh*0.28; off_tit=rh*0.09; off_det=rh*0.53
+    off_val = rh*0.25; off_cau = rh*0.32
+    row_bg  = ["FFFFFF","F8FAFC"]
+
+    for ri, inc in enumerate(incidencias):
+        ry = tt + hh + ri*rh
+        bg = row_bg[ri%2]
+        add_rect(slide, tl, ry, sum(col_w), rh, fill=bg, line="E5E7EB", lw=0.5)
+        titulo, detalle = construir_textos_incidencia(inc, nodes)
+        cc = CAUSA_COLORS.get(inc["causa"],"374151")
+        x  = tl
+        add_text(slide, str(ri+1), x+0.02, ry+off_num, col_w[0]-0.04, 0.30,
+                 sz=10, bold=True, color="374151", align=PP_ALIGN.CENTER)
+        x += col_w[0]
+        add_text(slide, titulo,  x+0.06, ry+off_tit, col_w[1]-0.10, 0.27,
+                 sz=sz_tit, bold=True, color="111827")
+        if rh >= 0.48:
+            add_text(slide, detalle, x+0.06, ry+off_det, col_w[1]-0.10, 0.27,
+                     sz=sz_det, color="6B7280")
+        x += col_w[1]
+        add_text(slide, str(inc["count"]), x+0.02, ry+off_val, col_w[2]-0.06, 0.35,
+                 sz=sz_num, bold=True, color=cc, align=PP_ALIGN.CENTER)
+        x += col_w[2]
+        add_text(slide, str(inc["days"]), x+0.02, ry+off_val, col_w[3]-0.06, 0.35,
+                 sz=sz_num, bold=True, color="374151", align=PP_ALIGN.CENTER)
+        x += col_w[3]
+        add_text(slide, CAUSA_LABELS.get(inc["causa"],inc["causa"]),
+                 x+0.06, ry+off_cau, col_w[4]-0.10, 0.26,
+                 sz=sz_cau, bold=True, color=cc)
+
+    # ─── DONUT ───────────────────────────────────────────────────
+    # Ordenar causas del donut ANTES de calcular radios (necesario para saber cuántas hay)
+    donut_items = sorted(causa_counts.items(), key=lambda x: CAUSA_ORDEN.get(x[0],9))
+    # Radio y posición Y dinámicos: con 4+ causas el donut se hace más pequeño
+    # para dejar espacio a la leyenda
+    _n_causas_d = len(donut_items)
+    ro    = 0.92 if _n_causas_d >= 4 else 1.05
+    ri_r  = 0.55 if _n_causas_d >= 4 else 0.63
+    # Centro Y: subir el donut para dejar más espacio a la leyenda abajo
+    _donut_top = tt + hh + 0.15
+    _ley_need  = _n_causas_d * 0.40 + 0.22     # espacio que necesita la leyenda
+    _max_cy    = 7.08 - ro - _ley_need - 0.10
+    cy         = min(_donut_top + ro + 0.10, _max_cy)
+    cx         = 11.55
+    add_text(slide, "Causa raíz",
+             10.05, 2.32, 3.1, 0.28, sz=13, bold=True, color="111827",
+             align=PP_ALIGN.CENTER)
+    add_text(slide, f"Distribución: {nodos_sin} nodos sin servicio",
+             10.05, 2.57, 3.1, 0.22, sz=8, color="6B7280",
+             align=PP_ALIGN.CENTER)
+    angle_s = -90.0
+    for causa, cnt in donut_items:
+        pct     = cnt/nodos_sin if nodos_sin > 0 else 0
+        angle_e = angle_s + pct*360
+        draw_donut_segment(slide, cx, cy, ro, ri_r, angle_s, angle_e,
+                           CAUSA_COLORS.get(causa,"6B7280"))
+        angle_s = angle_e
+
+    oval = slide.shapes.add_shape(
+        9, Inches(cx-ri_r), Inches(cy-ri_r), Inches(ri_r*2), Inches(ri_r*2))
+    oval.fill.solid(); oval.fill.fore_color.rgb = rgb("FFFFFF")
+    oval.line.fill.background()
+    add_text(slide, str(nodos_sin),
+             cx-0.42, cy-0.32, 0.84, 0.40, sz=26, bold=True, color="111827",
+             align=PP_ALIGN.CENTER)
+    add_text(slide, "nodos",
+             cx-0.42, cy+0.08, 0.84, 0.22, sz=9, color="6B7280",
+             align=PP_ALIGN.CENTER)
+
+    _n_causas = len(donut_items)
+    _ley_gap  = min(0.42, (7.08-(cy+ro+0.18))/_n_causas) if _n_causas else 0.42
+    ley_x=10.0; ley_y=cy+ro+0.18
+    for idx,(causa,cnt) in enumerate(donut_items):
+        chex  = CAUSA_COLORS.get(causa,"6B7280")
+        pct_c = cnt/nodos_sin*100 if nodos_sin else 0
+        yb    = ley_y + idx*_ley_gap
+        add_rect(slide, ley_x, yb, 0.14, 0.14, fill=chex)
+        add_text(slide, CAUSA_LABELS.get(causa,causa),
+                 ley_x+0.20, yb-0.02, 3.0, 0.20, sz=9, bold=True, color=chex)
+        add_text(slide, f"{cnt} nodos ({pct_c:.1f}%)",
+                 ley_x+0.20, yb+0.17, 3.0, 0.18, sz=8, color="6B7280")
+
+    # ─── FOOTER ──────────────────────────────────────────────────
+    fy = 7.08
+    add_rect(slide, 0, fy, 13.33, 0.42, fill="1E3A5F")
+    partes = []
+    for causa in ["PRONATEL","ENERGETICO","RADIO","POR_DEFINIR","SOCIAL"]:
+        cnt = causa_counts.get(causa, 0)
+        if cnt:
+            partes.append(f"{cnt} nodo(s) por {CAUSA_LABELS[causa]} ({cnt/nodos_sin*100:.1f}%)")
+    notas = [_nota_intermitencia(inc, nodes).replace("⚠ ", "")
+             for inc in incidencias if inc["intermitencia"]]
+    res = "De los nodos sin servicio: " + " | ".join(partes) + "."
+    if notas:
+        res += " ⚠ Intermitencia: " + "; ".join(notas) + "."
+    add_text(slide, "Resumen Estado",
+             0.15, fy+0.03, 2.5, 0.18, sz=8.5, bold=True, color="FFFFFF")
+    add_text(slide, res, 0.15, fy+0.19, 13.0, 0.22, sz=7.8, color="CBD5E1")
+
+    # ─── guardar ─────────────────────────────────────────────────
+    ts  = datetime.now().strftime("%Y%m%d_%H%M")
+    out = os.path.join(dest_folder, f"Estado_Red_Acceso_Lambayeque_{ts}.pptx")
+    prs.save(out)
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════
+#  INTERFAZ GRÁFICA
+# ══════════════════════════════════════════════════════════════════
+
+class App(tk.Tk):
+    BG="#0D1B2A"; BG2="#132338"; ACCENT="#1A6FC4"; ACCENT2="#F5A623"
+    FG="#E8EFF7"; FG2="#8BA3BE"; BORDER="#1E3A5F"
+    GREEN="#22C55E"; RED_C="#EF4444"
+
+    def __init__(self):
+        super().__init__()
+        self.title("Generador — Estado Red Acceso Lambayeque  v4")
+        self.geometry("740x640"); self.configure(bg=self.BG); self.resizable(False,False)
+        self.xlsx_bd   = tk.StringVar(); self.inf_csv  = tk.StringVar()
+        self.net_xlsx  = tk.StringVar(); self.dest     = tk.StringVar()
+        self.fecha_var = tk.StringVar(value=self._fecha_hoy())
+        self._out_folder = None
+        self._build_ui(); self._style_widgets()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _fecha_hoy(self):
+        m=["enero","febrero","marzo","abril","mayo","junio","julio",
+           "agosto","septiembre","octubre","noviembre","diciembre"]
+        h=datetime.now(); return f"{h.day:02d} de {m[h.month-1]} de {h.year}"
+
+    def _style_widgets(self):
+        s=ttk.Style(self); s.theme_use("clam")
+        s.configure("dark.Horizontal.TProgressbar",
+                    troughcolor=self.BORDER, background=self.ACCENT2, thickness=8, borderwidth=0)
+
+    def _build_ui(self):
+        hdr=tk.Frame(self, bg=self.ACCENT, height=58)
+        hdr.pack(fill=tk.X); hdr.pack_propagate(False)
+        tk.Label(hdr, text="⚡", font=("Segoe UI",18), bg=self.ACCENT, fg="white").pack(side=tk.LEFT, padx=14)
+        tk.Label(hdr, text="GENERADOR — ESTADO RED ACCESO LAMBAYEQUE  v10",
+                 font=("Segoe UI",11,"bold"), bg=self.ACCENT, fg="white").pack(side=tk.LEFT)
+        body=tk.Frame(self, bg=self.BG, padx=28, pady=12); body.pack(fill=tk.BOTH, expand=True)
+
+        self._step_label(body,"PASO 1","BD Nodos — BD_AUTOMATIZACION_v6.xlsx (o posterior)")
+        self._file_row(self._card(body), self.xlsx_bd, [("Excel","*.xlsx *.xlsm")],
+                       "BD_AUTOMATIZACION_v6.xlsx")
+        self._step_label(body,"PASO 2","Alarmas Infinera — *_FILTER.csv")
+        self._file_row(self._card(body), self.inf_csv, [("CSV","*.csv")],
+                       "*_activas_*_FILTER.csv")
+        self._step_label(body,"PASO 3","Alarmas NetEco — CurrentAlarms*.xlsx")
+        self._file_row(self._card(body), self.net_xlsx, [("Excel","*.xlsx")],
+                       "CurrentAlarms*.xlsx")
+        self._step_label(body,"PASO 4","Fecha del reporte")
+        f4=self._card(body); r4=tk.Frame(f4, bg=self.BG2); r4.pack(fill=tk.X, padx=10, pady=7)
+        tk.Label(r4, text="📅", font=("Segoe UI",11), bg=self.BG2, fg=self.FG2).pack(side=tk.LEFT, padx=(0,6))
+        tk.Entry(r4, textvariable=self.fecha_var, font=("Segoe UI",10),
+                 bg=self.BG2, fg=self.FG, insertbackground=self.FG, relief=tk.FLAT, bd=2, width=38).pack(side=tk.LEFT)
+        self._step_label(body,"PASO 5","Carpeta de destino")
+        f5=self._card(body); r5=tk.Frame(f5, bg=self.BG2); r5.pack(fill=tk.X, padx=10, pady=7)
+        tk.Label(r5, textvariable=self.dest, font=("Segoe UI",9), bg=self.BG2, fg=self.FG2,
+                 anchor="w", width=54).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Button(r5, text="📁  Seleccionar", font=("Segoe UI",9,"bold"),
+                  bg=self.ACCENT, fg="white", relief=tk.FLAT, padx=12, pady=4,
+                  cursor="hand2", command=self._pick_folder).pack(side=tk.RIGHT)
+
+        btn=tk.Frame(body, bg=self.BG); btn.pack(fill=tk.X, pady=(10,4))
+        self.gen_btn=tk.Button(btn, text="▶   GENERAR POWERPOINT",
+            font=("Segoe UI",12,"bold"), bg=self.ACCENT2, fg="#0D1B2A",
+            relief=tk.FLAT, padx=20, pady=10, cursor="hand2",
+            activebackground="#E8941F", command=self._run)
+        self.gen_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.open_btn=tk.Button(btn, text="📂  Abrir carpeta",
+            font=("Segoe UI",10), bg=self.BG2, fg=self.FG2, relief=tk.FLAT,
+            padx=14, pady=10, cursor="hand2", state=tk.DISABLED, command=self._open_folder)
+        self.open_btn.pack(side=tk.LEFT, padx=(8,0))
+
+        self.progress=ttk.Progressbar(body, mode="indeterminate", length=680,
+                                      style="dark.Horizontal.TProgressbar")
+        self.progress.pack(fill=tk.X, pady=(8,2))
+        self.log_var=tk.StringVar(value="✔  Listo. Completa los pasos y pulsa Generar.")
+        self.log_lbl=tk.Label(body, textvariable=self.log_var,
+                              font=("Segoe UI",9), bg=self.BG, fg=self.FG2, anchor="w")
+        self.log_lbl.pack(fill=tk.X)
+
+    def _step_label(self, p, step, desc):
+        fr=tk.Frame(p, bg=self.BG); fr.pack(fill=tk.X, pady=(8,3))
+        tk.Label(fr, text=step, font=("Segoe UI",8,"bold"),
+                 bg=self.ACCENT, fg="white", padx=6, pady=1).pack(side=tk.LEFT)
+        tk.Label(fr, text=f"  —  {desc}", font=("Segoe UI",9,"bold"),
+                 bg=self.BG, fg=self.ACCENT2).pack(side=tk.LEFT)
+
+    def _card(self, p):
+        fr=tk.Frame(p, bg=self.BG2, bd=0,
+                    highlightbackground=self.BORDER, highlightthickness=1)
+        fr.pack(fill=tk.X, pady=(0,2)); return fr
+
+    def _file_row(self, p, var, ft, ph):
+        row=tk.Frame(p, bg=self.BG2); row.pack(fill=tk.X, padx=10, pady=7)
+        var.set(f"✦  {ph}")
+        tk.Label(row, textvariable=var, font=("Segoe UI",9), bg=self.BG2,
+                 fg=self.FG2, anchor="w", width=54).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        def pick():
+            path=filedialog.askopenfilename(filetypes=ft+[("Todos","*.*")])
+            if path: var.set(path); self._log(f"Archivo: {os.path.basename(path)}")
+        tk.Button(row, text="📂  Explorar", font=("Segoe UI",9,"bold"),
+                  bg=self.ACCENT, fg="white", relief=tk.FLAT, padx=12, pady=4,
+                  cursor="hand2", command=pick).pack(side=tk.RIGHT)
+
+    def _pick_folder(self):
+        f=filedialog.askdirectory()
+        if f: self.dest.set(f); self._out_folder=f
+
+    def _log(self, msg, color=None):
+        self.log_var.set(msg); self.log_lbl.config(fg=color or self.FG2)
+        self.update_idletasks()
+
+    def _validar(self):
+        errs=[]
+        for paso,var,label in [("PASO 1",self.xlsx_bd,"BD Nodos"),
+                                ("PASO 2",self.inf_csv,"CSV Infinera"),
+                                ("PASO 3",self.net_xlsx,"XLSX NetEco")]:
+            v=var.get()
+            if not v or v.startswith("✦"):
+                errs.append(f"• {paso}: Selecciona el archivo {label}.")
+            elif not os.path.isfile(v):
+                errs.append(f"• {paso}: Archivo no encontrado:\n  {v}")
+        if not self.fecha_var.get().strip():
+            errs.append("• PASO 4: Ingresa la fecha del reporte.")
+        d=self.dest.get()
+        if not d or not os.path.isdir(d):
+            errs.append("• PASO 5: Selecciona una carpeta de destino válida.")
+        return errs
+
+    def _run(self):
+        errs=self._validar()
+        if errs:
+            messagebox.showwarning("Campos incompletos",
+                "Corrige los siguientes errores:\n\n"+"\n".join(errs)); return
+        bd=self.xlsx_bd.get(); inf=self.inf_csv.get()
+        net=self.net_xlsx.get(); dest=self.dest.get()
+        fecha=self.fecha_var.get().strip()
+        self.gen_btn.config(state=tk.DISABLED)
+        self.open_btn.config(state=tk.DISABLED)
+        self.progress.start(12)
+
+        def worker():
+            try:
+                self.after(0,self._log,"⏳  Cargando BD de nodos…")
+                nodes, infinera_map, adj_map, total_nodos = cargar_excel(bd)
+                neteco_name_map = {v["name"].upper():k for k,v in nodes.items() if v["name"]}
+                self.after(0,self._log,"⏳  Cargando alarmas Infinera…")
+                inf_alarms = cargar_infinera_csv(inf, infinera_map)
+                self.after(0,self._log,"⏳  Cargando alarmas NetEco…")
+                neteco_comm, neteco_energy = cargar_neteco_xlsx(net, neteco_name_map)
+                self.after(0,self._log,"⏳  Analizando incidencias…")
+                incidencias, sin_servicio = analizar_incidencias(
+                    nodes, inf_alarms, neteco_comm, neteco_energy, adj_map)
+                self.after(0,self._log,"⏳  Generando PowerPoint…")
+                out = generar_pptx(incidencias, sin_servicio, total_nodos, nodes,
+                                   neteco_comm, neteco_energy, fecha, dest)
+                self.after(0,self._done_ok,out)
+            except ValueError as ve:
+                self.after(0,self._done_err,"Error en los datos",str(ve))
+            except PermissionError as pe:
+                self.after(0,self._done_err,"Permiso denegado",str(pe))
+            except Exception:
+                self.after(0,self._done_err,"Error inesperado",traceback.format_exc())
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _done_ok(self, out):
+        self.progress.stop(); self.gen_btn.config(state=tk.NORMAL)
+        self.open_btn.config(state=tk.NORMAL)
+        self._out_folder=os.path.dirname(out)
+        self._log(f"✅  {os.path.basename(out)}", color=self.GREEN)
+        messagebox.showinfo("¡Listo!",
+            f"PowerPoint generado:\n\n📄 {os.path.basename(out)}\n\n📁 {self._out_folder}")
+
+    def _done_err(self, titulo, detalle):
+        self.progress.stop(); self.gen_btn.config(state=tk.NORMAL)
+        self._log(f"❌  {titulo}", color=self.RED_C)
+        win=tk.Toplevel(self); win.title(f"Error — {titulo}")
+        win.configure(bg=self.BG); win.geometry("660x360")
+        win.resizable(True,True); win.grab_set()
+        tk.Label(win, text=f"⚠  {titulo}", font=("Segoe UI",11,"bold"),
+                 bg=self.BG, fg=self.RED_C, padx=16, pady=10).pack(fill=tk.X)
+        txt=scrolledtext.ScrolledText(win, font=("Consolas",9), bg="#1A0808",
+             fg="#FFAAAA", relief=tk.FLAT, bd=8, wrap=tk.WORD)
+        txt.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0,8))
+        txt.insert(tk.END, detalle); txt.config(state=tk.DISABLED)
+        tk.Button(win, text="  Cerrar  ", font=("Segoe UI",10,"bold"),
+                  bg=self.ACCENT, fg="white", relief=tk.FLAT, padx=14, pady=6,
+                  cursor="hand2", command=win.destroy).pack(pady=(0,12))
+
+    def _open_folder(self):
+        if self._out_folder and os.path.isdir(self._out_folder):
+            import platform, subprocess as sp
+            s=platform.system()
+            if   s=="Windows": os.startfile(self._out_folder)
+            elif s=="Darwin":  sp.Popen(["open",self._out_folder])
+            else:              sp.Popen(["xdg-open",self._out_folder])
+
+    def _on_close(self):
+        if self.gen_btn["state"]==tk.DISABLED:
+            if not messagebox.askyesno("¿Cerrar?",
+                "Hay un proceso en curso. ¿Deseas salir?"): return
+        self.destroy()
+
+
+# ══════════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    try:
+        App().mainloop()
+    except Exception as e:
+        print(f"\n[ERROR CRÍTICO] {e}\n{traceback.format_exc()}")
+        input("Presiona Enter para salir...")
