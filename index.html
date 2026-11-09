@@ -143,6 +143,14 @@ body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow
 .mbtn{padding:7px 16px;border-radius:7px;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit}
 .mbtn-pri{background:#1f6feb;color:#fff}.mbtn-pri:hover{background:#388bfd}
 .mbtn-sec{background:#1f2937;color:#8b949e;border:1px solid #374151}.mbtn-sec:hover{background:#374151;color:#e6edf3}
+/* Fusión manual (v14) */
+#modal-fus{position:fixed;inset:0;background:#00000080;z-index:5000;display:none;align-items:center;justify-content:center}
+#modal-fus.open{display:flex}
+#modal-fus-box{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:22px 24px;width:400px;max-width:92vw;max-height:88vh;overflow-y:auto}
+#modal-fus-box h3{font-size:13px;color:#e6edf3;margin-bottom:10px}
+#fus-nota{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:7px;padding:8px 10px;color:#e6edf3;font-family:inherit;font-size:11px;resize:vertical;min-height:44px;margin-top:10px}
+#fus-panel{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:12px 14px;margin:10px 14px 0;flex-shrink:0}
+#fus-panel h4{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
 /* Social panel */
 #soc-panel{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:12px 14px;margin:10px 14px 0;flex-shrink:0}
 #soc-panel h4{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
@@ -587,6 +595,11 @@ canvas{display:block}
       </div>
     </div>
   </div>
+  <!-- Panel eventos anexados manualmente (v14) -->
+  <div id="fus-panel">
+    <h4>🔗 Eventos anexados manualmente a un evento masivo</h4>
+    <div id="fus-lista"><div style="color:#6b7280;font-size:10px">Ningún evento anexado manualmente.</div></div>
+  </div>
   <div id="dash-foot">Esperando datos...</div>
 </div>
 
@@ -853,6 +866,19 @@ canvas{display:block}
   </div>
 </div>
 
+<div id="modal-fus">
+  <div id="modal-fus-box">
+    <h3>🔗 Anexar a evento masivo — <span id="fus-titulo"></span></h3>
+    <div style="font-size:10.5px;color:#8b949e;margin-bottom:10px;line-height:1.4">Para un nodo/evento ya superado en campo cuya alarma no se refresca porque su red o nodo padre sigue caído. Se contará dentro del evento elegido y deja de aparecer como incidencia separada.</div>
+    <div id="fus-opts"></div>
+    <textarea id="fus-nota" placeholder="Nota (opcional): ej. restablecido en campo el 08/11..."></textarea>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-sec" onclick="cerrarFusion()">Cancelar</button>
+      <button class="mbtn mbtn-pri" onclick="guardarFusion()">Anexar</button>
+    </div>
+  </div>
+</div>
+
 <div id="tip"></div>
 
 <script>
@@ -884,11 +910,12 @@ let neteco_map_global={}; // {SITE_NAME_UPPER: codigo} — reutilizado por tab O
 let resultados_global=null;
 let cargando=false;
 // Overrides: cargados desde Drive (overrides.json)
-let overrides_global={causas:{},sociales:{}};
+let overrides_global={causas:{},sociales:{},fusiones:{}};
 let blinkPhase=true;
 let blinkNtIds=new Set();
 let blinkInterval=null;
 let modal_current_root=null; // root code being edited
+let _datosAnalisis=null,_infAlarmsActual=null; // últimos datos analizados (re-análisis sin recargar Drive)
 let panel_net_alert_open=false;   // estado panel alerta NetEco
 let alertas_neteco_comm_data=[];  // datos de la última detección
 
@@ -1281,8 +1308,11 @@ function parseInfinera(b64,infinera_map){
     const durStr=iDur>=0?(row[iDur]||'0:0:0:0'):'0:0:0:0';
     const dp=durStr.split(':');
     const days=parseInt(dp[0])||0;
+    // Duración total en segundos (D:H:M:S) — usada SOLO para la tolerancia
+    // de "mismo evento" en el borde de día (ver TOL_MISMO_EVENTO_SEG)
+    const secs=days*86400+(parseInt(dp[1])||0)*3600+(parseInt(dp[2])||0)*60+(parseInt(dp[3])||0);
     const onTimeStr=iTime>=0?(row[iTime]||''):'';
-    if(!alarms[code])alarms[code]={days,on_time:onTimeStr};
+    if(!alarms[code])alarms[code]={days,secs,on_time:onTimeStr};
   }
   // Contar solo filas con alarmas REALES (excluir PRUEBA y vacías)
   const realRows=lines.slice(1).filter(l=>{
@@ -1424,9 +1454,26 @@ function clasificarRaiz(code,nodes_all,inf_alarms,neteco_comm,neteco_energy){
 //  cambia y por qué.
 // ═══════════════════════════════════════════════════════════════════
 let _resolverCache=null;
+let _fusionesAplicadas=new Set(); // nodos anexados manualmente que SÍ se aplicaron en este corte
+
+// ── v14 · Tolerancia de "mismo evento" ────────────────────────────────
+// Un padre explica a su hijo si cae el mismo día o antes (regla original por
+// días) O si el hijo reportó su alarma hasta TOL segundos ANTES que el padre
+// (alarmas casi simultáneas: el nodo hijo/terminal avisa segundos o 1-2 min
+// antes que el distrital). Es ADITIVA: nunca separa lo que ya se agrupaba.
+// Su efecto real es en el borde de día (ej. padre 8d 23:59:50 / hijo 9d 00:00:20,
+// que por días puros se partía en dos incidencias).
+const TOL_MISMO_EVENTO_SEG=300;
 
 function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
   const dias=c=>inf_alarms[c]?.days??0;
+  const secs=c=>inf_alarms[c]?.secs;
+  // ¿puede el padre p explicar la caída del hijo c?
+  const absorbe=(p,c)=>{
+    if(dias(p)>=dias(c))return true;
+    const sp=secs(p),sc=secs(c);
+    return sp!=null&&sc!=null&&(sp+TOL_MISMO_EVENTO_SEG>=sc);
+  };
   const RING_NODES=new Set(Object.keys(nodes_all).filter(c=>(nodes_all[c].padres||[]).length>1));
 
   // Paso 1 — resolver SOLO los nodos-anillo, de forma aislada (evita que
@@ -1438,7 +1485,7 @@ function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
     camino=[...camino,code];
     const padres=nodes_all[code]?.padres||[];
     if(padres.some(p=>!sin_servicio.has(p)))return code; // padre real vivo -> raíz aquí
-    const validos=padres.filter(p=>sin_servicio.has(p)&&dias(p)>=dias(code)).sort((a,b)=>dias(a)-dias(b));
+    const validos=padres.filter(p=>sin_servicio.has(p)&&absorbe(p,code)).sort((a,b)=>dias(a)-dias(b));
     for(const p of validos){const res=resolverAnillo(p,camino);if(res!==null)return res;}
     return null;
   }
@@ -1460,13 +1507,37 @@ function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
     if(!padres.length)return code;
     const p=padres[0];
     if(!sin_servicio.has(p))return code;
-    if(dias(p)<dias(code))return code; // padre más reciente no explica falla previa
+    if(!absorbe(p,code))return code; // padre más reciente (más allá de la tolerancia) no explica falla previa
     const nuevo=new Set(camino);nuevo.add(code);
     return resolverNormal(p,nuevo);
   }
 
   const raizDe={};
   for(const c of sin_servicio)raizDe[c]=resolverNormal(c,new Set());
+
+  // ── v14 · Fusiones manuales: un evento previo (ya superado en campo pero cuya
+  //    alarma Infinera no refresca porque su padre sigue caído) se anexa a un
+  //    evento masivo elegido por el operador. Salvaguardas de integridad:
+  //    · solo se aplica si el nodo es hoy raíz de su propio evento;
+  //    · solo si la alarma sigue siendo LA MISMA (on_time guardado coincide) en
+  //      origen y destino — si la alarma cambió, la fusión caduca sola;
+  //    · nunca crea ciclos ni se auto-referencia.
+  _fusionesAplicadas=new Set();
+  const fus=(typeof overrides_global!=='undefined'&&overrides_global.fusiones)||{};
+  for(const[code,f]of Object.entries(fus)){
+    if(!f||!sin_servicio.has(code)||!sin_servicio.has(f.destino))continue;
+    if(f.on_time&&inf_alarms[code]?.on_time!==f.on_time)continue;
+    if(f.destino_on_time&&inf_alarms[f.destino]?.on_time!==f.destino_on_time)continue;
+    if(raizDe[code]!==code)continue;          // ya no es raíz de evento propio
+    const destRoot=raizDe[f.destino];
+    if(!destRoot||destRoot===code)continue;   // mismo evento o ciclo
+    // el destino no puede colgar topológicamente del nodo que se anexa
+    const _sube=(x,seen)=>{if(x===code)return true;if(seen.has(x))return false;seen.add(x);
+      return(nodes_all[x]?.padres||[]).some(q=>_sube(q,seen));};
+    if(_sube(f.destino,new Set()))continue;
+    for(const c of sin_servicio)if(raizDe[c]===code)raizDe[c]=destRoot;
+    _fusionesAplicadas.add(code);
+  }
   return raizDe;
 }
 
@@ -1484,6 +1555,7 @@ function expandirSubtree(root,nodes_all,sin_servicio,inf_alarms){
 
 function analizarIncidencias(nodes_bd,inf_alarms,neteco_comm,neteco_energy){
   _resolverCache=null; // reset — cada corte recalcula desde cero
+  _fusionesAplicadas=new Set();
   // Merge BD + ACC (embedded), BD toma prioridad
   const nodes_all={};
   for(const[k,v]of Object.entries(ACC))
@@ -1508,16 +1580,33 @@ function analizarIncidencias(nodes_bd,inf_alarms,neteco_comm,neteco_energy){
     const members=expandirSubtree(root,nodes_all,sin_servicio,inf_alarms);
     const{causa,detalle}=clasificarRaiz(root,nodes_all,inf_alarms,neteco_comm,neteco_energy);
     const root_days=inf_alarms[root]?.days||0;
-    const max_days=[...members].reduce((m,c)=>Math.max(m,inf_alarms[c]?.days||0),0);
+    const root_secs=inf_alarms[root]?.secs;
+    // Días efectivos: un miembro que reportó hasta TOL seg ANTES que la raíz
+    // pertenece al mismo evento → cuenta en el día de la raíz (evita falsas
+    // "intermitencias" por alarmas casi simultáneas en el borde de día).
+    const diaEf=c=>{
+      const d=inf_alarms[c]?.days||0;
+      if(c===root||d<=root_days)return d;
+      const sc=inf_alarms[c]?.secs;
+      if(root_secs!=null&&sc!=null&&sc-root_secs<=TOL_MISMO_EVENTO_SEG&&!_fusionesAplicadas.has(c))return root_days;
+      return d;
+    };
+    const max_days=[...members].reduce((m,c)=>Math.max(m,diaEf(c)),0);
     const days_dist={};
-    for(const m of members){const d=inf_alarms[m]?.days||0;if(!days_dist[d])days_dist[d]=[];days_dist[d].push(m);}
+    for(const m of members){const d=diaEf(m);if(!days_dist[d])days_dist[d]=[];days_dist[d].push(m);}
+    // Nodos anexados manualmente a este evento
+    const anexados=[...members].filter(c=>c!==root&&_fusionesAplicadas.has(c));
+    const nota_fusion=anexados.length
+      ?` · 🔗 Anexado manualmente: ${anexados.map(c=>(nodes_all[c]?.name||c).replace(/_/g,' ')).join(', ')}`
+      :'';
     // Detectar nodos sociales incluidos como miembros (no son la raíz)
     const soc_miembros=[...members].filter(c=>c!==root&&sociales_dinamicos.has(c));
     const nota_social=soc_miembros.length>0
       ?` · 📌 Incluye nodo social: ${soc_miembros.map(c=>(nodes_all[c]?.name||c).replace(/_/g,' ')).join(', ')}`
       :'';
     incidencias.push({root,members,count:members.size,causa,
-      detalle_causa:detalle+nota_social,
+      detalle_causa:detalle+nota_social+nota_fusion,
+      anexados,
       days:root_days,root_days,max_days,days_dist,
       on_time:inf_alarms[root]?.on_time,
       intermitencia:max_days!==root_days,
@@ -1670,8 +1759,8 @@ function actualizarDashboard({incidencias,sin_servicio}){
         <td class="tbold">${titulo}${anilloChip}</td>
         <td class="tc tbold">${inc.count}</td>
         <td class="tc tbold">${dm}</td>
-        <td class="det">${detalle_final}</td>
-        <td class="tc"><button onclick="abrirEditCausa('${inc.root}')" title="${editTitle}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;color:${hasOvr?'#f59e0b':'#374151'}" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='none'">✏️</button></td>
+        <td class="det">${detalle_final}${(inc.anexados&&inc.anexados.length)?`<div style="margin-top:2px;font-size:9px;color:#38bdf8">🔗 +${inc.anexados.map(c=>(nodesGlobal[c]?.name||c).replace(/_/g,' ')).join(', ')} (anexado manual)</div>`:''}</td>
+        <td class="tc"><button onclick="abrirFusion('${inc.root}')" title="Anexar este evento a un evento masivo (nodo ya superado en campo)" style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:4px;color:#38bdf8" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='none'">🔗</button><button onclick="abrirEditCausa('${inc.root}')" title="${editTitle}" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;color:${hasOvr?'#f59e0b':'#374151'}" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='none'">✏️</button></td>
       </tr>${filaOlas}`;
     }).join('');
   }
@@ -1680,6 +1769,7 @@ function actualizarDashboard({incidencias,sin_servicio}){
   const partes=Object.entries(cnt).sort((a,b)=>(CAUSA_ORDEN[a[0]]??9)-(CAUSA_ORDEN[b[0]]??9)).map(([c,n])=>`${n} ${CAUSA_LABELS[c]}`);
   document.getElementById('dash-foot').textContent=nSin>0?`${nSin} nodos sin servicio — ${partes.join(' | ')}.`:'Red operativa al 100%.';
   renderPanelSocial();
+  renderPanelFusiones();
 }
 
 function toggleOlas(i){
@@ -1808,6 +1898,8 @@ async function cargarTodo(manual=false){
     // ────────────────────────────────────────────────────────────────────────
 
     // 5. Analizar (overrides ya cargados → clasificarRaiz los aplica)
+    _datosAnalisis={nodes,inf_alarms,neteco_comm,neteco_energy};
+    _infAlarmsActual=inf_alarms;
     const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
     resultados_global=res;
     actualizarPanelGE();
@@ -2304,9 +2396,9 @@ async function cargarOverrides(){
       for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
       const txt=new TextDecoder().decode(bytes);
       const obj=JSON.parse(txt);
-      overrides_global={causas:obj.causas||{},sociales:obj.sociales||{},last_reset:obj.last_reset||''};
+      overrides_global={causas:obj.causas||{},sociales:obj.sociales||{},fusiones:obj.fusiones||{},last_reset:obj.last_reset||''};
     }
-  }catch{overrides_global={causas:{},sociales:{},last_reset:''};}
+  }catch{overrides_global={causas:{},sociales:{},fusiones:{},last_reset:''};}
   // Limpieza diaria: si hoy es un día nuevo → borra causas (NO sociales)
   const hoy=HOY();
   if(overrides_global.last_reset!==hoy){
@@ -2364,6 +2456,83 @@ async function guardarOverride(){
   flash('✅ Causa actualizada para '+modal_current_root,'ok');
   if(resultados_global)actualizarDashboard(resultados_global);
   updateStats();
+}
+
+// ── v14 · Anexar evento previo a un evento masivo ────────────────────
+let fusion_current=null;
+function abrirFusion(code){
+  if(!resultados_global)return;
+  const inc=resultados_global.incidencias.find(i=>i.root===code);
+  if(!inc)return;
+  fusion_current=code;
+  const nm=c=>(nodesGlobal[c]?.name||nodesGlobal[c]?.nombre||c).replace(/_/g,' ');
+  document.getElementById('fus-titulo').textContent=nm(code)+' ('+inc.count+' nodo'+(inc.count!==1?'s':'')+')';
+  const cand=resultados_global.incidencias.filter(i=>i.root!==code);
+  document.getElementById('fus-opts').innerHTML=cand.length?cand.map((i,k)=>{
+    const clr=CAUSA_CLR[i.causa]||'#6b7280';
+    return`<div class="mo-row${k===0?' sel':''}" onclick="selectFusionDest('${i.root}',this)">
+      <input type="radio" name="fus_dest" value="${i.root}"${k===0?' checked':''}>
+      <span class="mo-lbl" style="color:${clr}">${nm(i.root)}</span>
+      <span class="mo-desc">${i.count} nodos · ${i.root_days}d</span>
+    </div>`;}).join(''):'<div style="color:#6b7280;font-size:11px">No hay otro evento al cual anexar.</div>';
+  document.getElementById('fus-nota').value='';
+  document.getElementById('modal-fus').classList.add('open');
+}
+function selectFusionDest(k,el){
+  document.querySelectorAll('#fus-opts .mo-row').forEach(r=>r.classList.remove('sel'));
+  el.classList.add('sel');el.querySelector('input').checked=true;
+}
+function cerrarFusion(){document.getElementById('modal-fus').classList.remove('open');fusion_current=null;}
+async function guardarFusion(){
+  if(!fusion_current||!resultados_global)return;
+  const sel=document.querySelector('input[name="fus_dest"]:checked');
+  if(!sel){alert('Selecciona el evento destino.');return;}
+  const destino=sel.value,code=fusion_current;
+  const ia=_infAlarmsActual||{};
+  if(!overrides_global.fusiones)overrides_global.fusiones={};
+  overrides_global.fusiones[code]={
+    destino,
+    nota:document.getElementById('fus-nota').value.trim(),
+    on_time:ia[code]?.on_time||'',
+    destino_on_time:ia[destino]?.on_time||'',
+    ts:new Date().toISOString()
+  };
+  cerrarFusion();
+  await guardarOverridesRemoto();
+  reanalizarConCache();
+  flash('🔗 '+code+' anexado al evento de '+destino,'ok');
+}
+async function deshacerFusion(code){
+  if(!confirm('¿Deshacer la anexión manual de '+code+'? Volverá a mostrarse como evento propio.'))return;
+  delete overrides_global.fusiones[code];
+  await guardarOverridesRemoto();
+  reanalizarConCache();
+  flash('✅ Anexión de '+code+' deshecha','ok');
+}
+// Re-ejecuta el análisis con los últimos datos ya cargados (sin volver a Drive)
+function reanalizarConCache(){
+  if(!_datosAnalisis)return;
+  const{nodes,inf_alarms,neteco_comm,neteco_energy}=_datosAnalisis;
+  const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
+  resultados_global=res;
+  actualizarSimulador(res.sin_servicio);
+  actualizarDashboard(res);
+}
+function renderPanelFusiones(){
+  const cont=document.getElementById('fus-lista');if(!cont)return;
+  const fus=Object.entries(overrides_global.fusiones||{});
+  if(!fus.length){cont.innerHTML='<div style="color:#6b7280;font-size:10px">Ningún evento anexado manualmente. Usa el botón 🔗 en la fila de un evento.</div>';return;}
+  const nm=c=>(nodesGlobal[c]?.name||nodesGlobal[c]?.nombre||ACC[c]?.nombre||c).replace(/_/g,' ');
+  cont.innerHTML=fus.map(([code,f])=>{
+    const activa=_fusionesAplicadas.has(code);
+    const estado=activa?'<span style="font-size:9px;color:#38bdf8">activa</span>'
+      :'<span style="font-size:9px;color:#6b7280;font-style:italic" title="La alarma cambió, el nodo ya no está caído o el evento destino ya no existe">inactiva</span>';
+    return`<div class="soc-item">
+      <span class="soc-code" style="color:#38bdf8">${code}</span>
+      <span class="soc-name">${nm(code)} → ${nm(f.destino)}${f.nota?` <span style="color:#6b7280;font-size:10px">· ${f.nota}</span>`:''}</span>
+      ${estado}
+      <button class="soc-rm" onclick="deshacerFusion('${code}')">Deshacer</button>
+    </div>`;}).join('');
 }
 
 // ── Panel gestión social ─────────────────────────────────
