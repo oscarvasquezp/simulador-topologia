@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Estado Red Acceso — Lambayeque v6</title>
+<title>Estado Red Acceso — Lambayeque v14</title>
 <script>
 // Implementación SHA-256 pura en JS (FIPS 180-4), sin dependencias.
 // Se usa en vez de crypto.subtle porque el archivo puede abrirse como
@@ -1446,11 +1446,11 @@ function clasificarRaiz(code,nodes_all,inf_alarms,neteco_comm,neteco_energy){
 //  Anillo Norte, tras la caída de Morrope que dejó unidireccional el
 //  Anillo Interior).
 //
-//  ⚠️ Requiere BD_AUTOMATIZACION_v6 (o posterior) en Drive para que
+//  ⚠️ Requiere BD_AUTOMATIZACION_v7 (o posterior) en Drive para que
 //  Cayaltí, La Victoria, Monsefú y Picsi tengan su padre real
 //  correcto. Con la BD v5 original, Cayaltí puede aparecer como
 //  incidencia separada (10 en vez de 9) — ver hoja CAMBIOS_V5_A_V6
-//  del archivo BD_AUTOMATIZACION_v6.xlsx para el detalle de qué
+//  del archivo BD_AUTOMATIZACION_v7.xlsx para el detalle de qué
 //  cambia y por qué.
 // ═══════════════════════════════════════════════════════════════════
 let _resolverCache=null;
@@ -1640,6 +1640,10 @@ function notaIntermitencia(inc){
 //    entrada real de esa ola (su padre canónico no está en el mismo
 //    grupo de días, o no tiene padre), en vez de solo mostrar el
 //    conteo compacto. Usado por la fila expandible del dashboard.
+// Padres de un nodo para el desglose de olas (padres directos de la BD).
+// NOTA: esta función faltaba en v13 → "padresEfectivos is not defined".
+function padresEfectivos(c,nodes){return(nodes&&nodes[c]&&nodes[c].padres)||[];}
+
 function calcularOlas(inc){
   const olas=[];
   for(const[d,codes]of Object.entries(inc.days_dist).sort((a,b)=>Number(a[0])-Number(b[0]))){
