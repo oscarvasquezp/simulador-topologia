@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Estado Red Acceso — Lambayeque v14</title>
+<title>Estado Red Acceso — Lambayeque v16</title>
 <script>
 // Implementación SHA-256 pura en JS (FIPS 180-4), sin dependencias.
 // Se usa en vez de crypto.subtle porque el archivo puede abrirse como
@@ -143,6 +143,23 @@ body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow
 .mbtn{padding:7px 16px;border-radius:7px;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit}
 .mbtn-pri{background:#1f6feb;color:#fff}.mbtn-pri:hover{background:#388bfd}
 .mbtn-sec{background:#1f2937;color:#8b949e;border:1px solid #374151}.mbtn-sec:hover{background:#374151;color:#e6edf3}
+/* Reportes (v15) */
+#tab-rep{flex-direction:column;overflow:hidden}
+#rep-top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px 6px;flex-wrap:wrap;flex-shrink:0}
+#rep-chips{display:flex;gap:6px;flex-wrap:wrap}
+.rchip{background:#161b22;border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:inherit}
+.rchip.active{background:#1f6feb22;border-color:#1f6feb;color:#58a6ff}
+#rep-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#rep-ctl input,#rep-ctl select{background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:4px 6px;font-size:11px;font-family:inherit}
+.rbtn{background:#238636;border:1px solid #2ea043;color:#fff;border-radius:6px;padding:5px 11px;font-size:11px;cursor:pointer;font-family:inherit}
+.rbtn:hover{background:#2ea043}
+#rep-info{padding:0 16px 6px;font-size:10px;color:#6b7280;flex-shrink:0}
+#rep-scroll{flex:1;overflow:auto;min-height:0;padding:0 16px 10px}
+#rep-tbl{border-collapse:collapse;font-size:11px;min-width:100%}
+#rep-tbl th{background:#1f2937;color:#8b949e;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;text-align:left;position:sticky;top:0;z-index:1;white-space:nowrap}
+#rep-tbl td{padding:5px 8px;border-bottom:1px solid #1f2937;white-space:nowrap}
+#rep-tbl td.wrap{white-space:normal;min-width:260px;max-width:420px}
+#rep-tbl tr:hover td{background:#1c2128}
 /* Fusión manual (v14) */
 #modal-fus{position:fixed;inset:0;background:#00000080;z-index:5000;display:none;align-items:center;justify-content:center}
 #modal-fus.open{display:flex}
@@ -463,6 +480,7 @@ canvas{display:block}
   <button class="tb" onclick="switchTab('ops')">🔴 Alarmas</button>
   <button class="tb" onclick="switchTab('inv')">📡 Inventario</button>
   <button class="tb" onclick="switchTab('log')">🔧 Logística</button>
+  <button class="tb" onclick="switchTab('rep')">📑 Reportes</button>
   <div id="di">
     <span class="di-item" id="di-bd">⏳ Cargando BD...</span>
     <span class="di-item" id="di-inf">⏳ Infinera...</span>
@@ -483,6 +501,27 @@ canvas{display:block}
 </nav>
 
 <!-- TAB 1: SIMULADOR -->
+<div id="tab-rep" class="tab">
+  <div id="rep-top">
+    <div id="rep-chips">
+      <button class="rchip active" data-v="todos" onclick="setRepVista('todos')">Todos los nodos</button>
+      <button class="rchip" data-v="tx" onclick="setRepVista('tx')">Red de TX</button>
+      <button class="rchip" data-v="otros" onclick="setRepVista('otros')">Otras causas</button>
+      <button class="rchip" data-v="acum" onclick="setRepVista('acum')">Acumulado del mes</button>
+    </div>
+    <div id="rep-ctl">
+      <span id="rep-mes-wrap" style="display:none">
+        <input type="month" id="rep-mes" onchange="renderReportes()">
+        <select id="rep-sub" onchange="renderReportes()"><option value="todos">Todos</option><option value="tx">Red de TX</option><option value="otros">Otras causas</option></select>
+      </span>
+      <button class="rbtn" onclick="descargarReporteActual()">⬇ Excel — alarmas activas</button>
+      <button class="rbtn" onclick="descargarReporteAcum()">⬇ Excel — acumulado del mes</button>
+    </div>
+  </div>
+  <div id="rep-info">Cargando…</div>
+  <div id="rep-scroll"><table id="rep-tbl"><thead id="rep-thead"></thead><tbody id="rep-tbody"></tbody></table></div>
+</div>
+
 <div id="tab-sim" class="tab active">
   <div id="app">
     <div id="panel">
@@ -1215,13 +1254,14 @@ function switchTab(id){
     return;
   }
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['sim','dash','ops','inv','log'][i]===id));
+  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['sim','dash','ops','inv','log','rep'][i]===id));
   document.getElementById('tab-'+id).classList.add('active');
   if(id==='sim'){setTimeout(()=>{resize();draw();},30);}
   if(id==='dash'&&resultados_global){actualizarDashboard(resultados_global);}
   if(id==='inv'&&!inv_sitios_global.length){cargarInventario();}
   if(id==='ops'&&!ops_alarms_global.length){cargarOperaciones();}
   if(id==='log'&&!logistica_cargada){cargarLogistica();}
+  if(id==='rep'){if(!reg_global)cargarRegistro().then(renderReportes);renderReportes();}
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1275,13 +1315,49 @@ function parseBD(b64){
     if(net_name)neteco_map[net_name]=code;
   }
   if(!Object.keys(nodes).length)throw new Error("No se encontraron nodos en BD_COMPLETA. Columnas detectadas: "+h.slice(0,10).join(" | "));
-  return{nodes,infinera_map,neteco_map};
+  // ── v15 · Hoja 'Nombres' (geografía por CODIGO UNICO) ──
+  const geo={};
+  const wsN=wb.Sheets[wb.SheetNames.find(n=>String(n).trim().toLowerCase()==='nombres')];
+  if(wsN){
+    const rawN=XLSX.utils.sheet_to_json(wsN,{header:1,defval:''});
+    const hN=(rawN[0]||[]).map(c=>String(c).trim().toUpperCase().replace(/[ÁÀ]/g,'A').replace(/É/g,'E').replace(/Í/g,'I').replace(/Ó/g,'O').replace(/Ú/g,'U'));
+    const ix=n=>hN.indexOf(n);
+    const cC=ix('CODIGO UNICO'),cD=ix('DEPARTAMENTO'),cP=ix('PROVINCIA'),cDi=ix('DISTRITO'),cL=ix('LOCALIDAD'),cT=ix('TRANSPORTE');
+    if(cC>=0)for(let i=1;i<rawN.length;i++){
+      const r=rawN[i],cod=String(r[cC]||'').trim();
+      if(!/^(LA|CA)\d+/.test(cod)||geo[cod])continue;
+      geo[cod]={dep:cD>=0?String(r[cD]||'').trim():'',prov:cP>=0?String(r[cP]||'').trim():'',dist:cDi>=0?String(r[cDi]||'').trim():'',loc:cL>=0?String(r[cL]||'').trim():'',transp:cT>=0?String(r[cT]||'').trim():''};
+    }
+  }
+  // ── v16 · Hoja 'Listado Tellabs...' : Node_ID (nid de DATA_INFINERA) → Node_Name ──
+  const nid_map={};
+  const shT=wb.SheetNames.find(n=>/listado\s+tellabs/i.test(String(n)));
+  if(shT){
+    const rawT=XLSX.utils.sheet_to_json(wb.Sheets[shT],{header:1,defval:''});
+    const hT=(rawT[0]||[]).map(c=>String(c).trim().toLowerCase().replace(/[\s_]+/g,'_'));
+    const cI=hT.indexOf('node_id'),cN=hT.indexOf('node_name');
+    if(cI>=0&&cN>=0)for(let i=1;i<rawT.length;i++){
+      const id=String(rawT[i][cI]).trim(),nm=String(rawT[i][cN]||'').trim();
+      if(id&&nm&&!nid_map[id])nid_map[id]=nm;
+    }
+  }
+  return{nodes,infinera_map,neteco_map,geo,nid_map};
 }
 
 // ═══════════════════════════════════════════════════════════════════
 //  PARSEO INFINERA CSV
 // ═══════════════════════════════════════════════════════════════════
-function parseInfinera(b64,infinera_map){
+// Duración → 'D:H:M:S'. Acepta '29 days, 18:01:28.786098' / '9:28:35.78' (formato nuevo) y 'D:H:M:S' (anterior)
+function normalizarDuracion(txt){
+  const t=String(txt||'').trim();let m;
+  if((m=t.match(/^(?:(\d+)\s*days?,?\s*)?(\d+):(\d{1,2}):(\d{1,2})(?:\.\d+)?$/i)))
+    return`${parseInt(m[1]||'0')}:${parseInt(m[2])}:${parseInt(m[3])}:${parseInt(m[4])}`;
+  return t||'0:0:0:0';
+}
+// Aviso para el usuario: nid de Infinera que no está en la hoja Listado Tellabs
+let inf_nid_desconocidos=[];
+function parseInfinera(b64,infinera_map,nid_map){
+  nid_map=nid_map||{};inf_nid_desconocidos=[];
   const bin=atob(b64.replace(/\s/g,''));
   const bytes=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
@@ -1292,50 +1368,48 @@ function parseInfinera(b64,infinera_map){
   const lines=text.split(/\r?\n/);
   // Archivo solo con cabeceras = red operativa (sin alarmas activas)
   if(lines.length<2||lines.filter(l=>l.trim()).length<=1)return{};
-  const headers=lines[0].split(';').map(h=>h.trim().replace(/^"|"$/g,''));
-  const iName=headers.indexOf('Node Name');
-  const iDur=headers.indexOf('Duration');
-  const iTime=headers.indexOf('On-Time');
-  if(iName<0)throw new Error(`CSV Infinera sin columna 'Node Name'. Columnas: ${headers.slice(0,8).join(', ')}`);
-  const alarms={};
+  // Separador: el que más aparezca en la cabecera (; , o tabulador)
+  const sep=[';',',','\t'].map(c=>[c,(lines[0].split(c).length-1)]).sort((x,y)=>y[1]-x[1])[0][0];
+  const splitRow=l=>{ // respeta comillas
+    const out=[];let cur='',q=false;
+    for(const ch of l){if(ch==='"'){q=!q;continue;}if(ch===sep&&!q){out.push(cur.trim());cur='';}else cur+=ch;}
+    out.push(cur.trim());return out;};
+  const headers=splitRow(lines[0]);
+  const hl=headers.map(h=>String(h).trim().toLowerCase());
+  const find=(...ns)=>hl.findIndex(h=>ns.includes(h));
+  const iNid=find('nid','node id','node_id');
+  const iName=find('node name');
+  const iDur=find('duration','duracion','duración');
+  const iTime=find('on-time','sdatetm');
+  const iFault=find('fault id','fltid');
+  const nuevoFmt=iNid>=0;
+  if(!nuevoFmt&&iName<0)throw new Error(`Infinera: faltan columnas 'nid' (formato nuevo) o 'Node Name' (anterior). Columnas: ${headers.slice(0,8).join(', ')}`);
+  if(nuevoFmt&&!Object.keys(nid_map).length)throw new Error("DATA_INFINERA usa 'nid' pero la BD no tiene la hoja 'Listado Tellabs…' (Node_ID → Node_Name)");
+  const alarms={},desconocidos={};let realRows=0;const ejemplos=[];
   for(let i=1;i<lines.length;i++){
-    const row=lines[i].split(';').map(c=>c.trim().replace(/^"|"$/g,''));
+    if(!lines[i].trim())continue;
+    const row=splitRow(lines[i]);
     if(row.length<2)continue;
-    const nodeName=row[iName]||'';
+    const nodeName=nuevoFmt?(nid_map[String(row[iNid]).trim()]||''):(row[iName]||'');
+    if(nuevoFmt&&!nodeName){desconocidos[row[iNid]]=1;continue;}
     if(!nodeName||/PRUEBA/i.test(nodeName))continue;
+    realRows++;if(ejemplos.length<3)ejemplos.push(nodeName);
     const code=infinera_map[nodeName.toUpperCase()];
     if(!code)continue;
-    const durStr=iDur>=0?(row[iDur]||'0:0:0:0'):'0:0:0:0';
+    const durStr=normalizarDuracion(iDur>=0?row[iDur]:'');
     const dp=durStr.split(':');
     const days=parseInt(dp[0])||0;
-    // Duración total en segundos (D:H:M:S) — usada SOLO para la tolerancia
-    // de "mismo evento" en el borde de día (ver TOL_MISMO_EVENTO_SEG)
+    // Duración total en segundos — usada SOLO para la tolerancia de "mismo evento"
     const secs=days*86400+(parseInt(dp[1])||0)*3600+(parseInt(dp[2])||0)*60+(parseInt(dp[3])||0);
     const onTimeStr=iTime>=0?(row[iTime]||''):'';
-    if(!alarms[code])alarms[code]={days,secs,on_time:onTimeStr};
+    if(!alarms[code])alarms[code]={days,secs,on_time:onTimeStr,fault:iFault>=0?(row[iFault]||''):'',node_name:nodeName,dur:durStr};
   }
-  // Contar solo filas con alarmas REALES (excluir PRUEBA y vacías)
-  const realRows=lines.slice(1).filter(l=>{
-    if(!l.trim()||l.split(';').length<2)return false;
-    const nm=(l.split(';')[iName]||'').trim();
-    return nm&&!/PRUEBA/i.test(nm); // excluir PRUEBA
-  }).length;
+  inf_nid_desconocidos=Object.keys(desconocidos);
+  if(inf_nid_desconocidos.length)console.warn('Infinera: nid sin nombre en Listado Tellabs →',inf_nid_desconocidos.join(', '));
   if(!Object.keys(alarms).length){
-    if(realRows===0){
-      // Sin alarmas reales (vacío o solo PRUEBA) → red operativa
-      console.info('Infinera: sin alarmas activas hoy — red operativa.');
-      return{};
-    } else {
-      // Hay filas reales pero no cruzan con BD → posible desface de nombres
-      const sample=Object.keys(infinera_map).slice(0,3).join(', ')||'(vacío)';
-      const csvSample=lines.slice(1,5)
-        .map(l=>(l.split(';')[iName]||'').trim())
-        .filter(n=>n&&!/PRUEBA/i.test(n)).join(', ');
-      console.warn('Infinera: '+realRows+' filas reales pero ninguna cruzó con BD.');
-      console.warn('BD espera nombres como: '+sample);
-      console.warn('CSV tiene nombres como: '+csvSample);
-      return{}; // No crashear — mostrar red operativa
-    }
+    if(realRows===0){console.info('Infinera: sin alarmas activas — red operativa.');return{};}
+    console.warn('Infinera: '+realRows+' filas reales pero ninguna cruzó con la BD (ej.: '+ejemplos.join(', ')+')');
+    return{}; // No crashear — mostrar red operativa
   }
   return alarms;
 }
@@ -1774,6 +1848,7 @@ function actualizarDashboard({incidencias,sin_servicio}){
   document.getElementById('dash-foot').textContent=nSin>0?`${nSin} nodos sin servicio — ${partes.join(' | ')}.`:'Red operativa al 100%.';
   renderPanelSocial();
   renderPanelFusiones();
+  renderReportes();
 }
 
 function toggleOlas(i){
@@ -1865,9 +1940,10 @@ async function cargarTodo(manual=false){
     const[rBD,rInf]=await Promise.all([prx('get','bd'),prx('get','infinera')]);
     if(!rBD.ok)throw new Error('Error al leer BD: '+(rBD.error||'?'));
     if(!rInf.ok)throw new Error('Error al leer Infinera: '+(rInf.error||'?'));
-    const{nodes,infinera_map,neteco_map}=parseBD(rBD.data);
+    const{nodes,infinera_map,neteco_map,geo,nid_map}=parseBD(rBD.data);
+    nid_map_global=nid_map||{};geo_global=geo||{};lectura_inf_global=(list.infinera&&list.infinera.actualizado)||'';
     neteco_map_global=neteco_map;   // expuesto para tab Operaciones (parseNetEcoRaw)
-    const inf_alarms=parseInfinera(rInf.data,infinera_map);
+    const inf_alarms=parseInfinera(rInf.data,infinera_map,nid_map_global);
 
     // 4. NetEco (opcional — solo para causa raíz)
     let neteco_comm={},neteco_energy={};
@@ -1910,6 +1986,7 @@ async function cargarTodo(manual=false){
     actualizarSimulador(res.sin_servicio);
   rebuildBlinkSet();
     actualizarDashboard(res);
+    sincronizarRegistro();   // v15: registra/actualiza eventos en el histórico (no bloquea)
     if(manual)flash('✅ Datos actualizados correctamente','ok');
   }catch(err){
     console.error(err);
@@ -2420,6 +2497,7 @@ async function guardarOverridesRemoto(){
     const r=await prx('setOverrides','',b64);
     if(!r.ok)console.warn('Error guardando overrides:',r.error);
   }catch(e){console.warn('Override save failed:',e.message);}
+  setTimeout(()=>{try{sincronizarRegistro();}catch{}},1500); // v15: refleja ajustes manuales en el histórico
 }
 
 // ── Modal edición causa ─────────────────────────────────
@@ -2460,6 +2538,199 @@ async function guardarOverride(){
   flash('✅ Causa actualizada para '+modal_current_root,'ok');
   if(resultados_global)actualizarDashboard(resultados_global);
   updateStats();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  v15 · REPORTES (alarmas activas + acumulado mensual)
+//  · "Actual": se calcula en vivo con el análisis (incluye ✏️ causas,
+//    🔗 anexiones y 📌 sociales).
+//  · "Acumulado": registro histórico por FAULT ID guardado en Drive
+//    (reportes_eventos.json). Un evento aparece en cada mes en que su
+//    alarma estuvo activa; se cierra cuando deja de aparecer en un
+//    archivo Infinera más nuevo. El servidor (proxy v5) hace el upsert.
+// ═══════════════════════════════════════════════════════════════════
+let nid_map_global={},geo_global={},lectura_inf_global='',reg_global=null,rep_vista='todos',_syncEnCurso=false;
+const REP_TIPO={PRONATEL:'Red de TX',ENERGETICO:'Corte de energía',RADIO:'Radio',POR_DEFINIR:'Por definir',SOCIAL:'Causa social'};
+const REP_COLS=[['ROW','row'],['FAULT ID','fault'],['Node Name','node'],['Duration','dur'],['On-Time','ot'],['TIPO INCIDENCIA','tipo'],['EXCLUSIÓN - DETALLE','detalle'],['depende','depende'],['nodos impactados','imp'],['codigo unico2','code'],['nodo transporte','red'],['DEPARTAMENTO','dep'],['PROVINCIA','prov'],['DISTRITO','dist'],['LOCALIDAD','loc'],['tipo nodo D/I/T','tn'],['AJUSTE MANUAL','aj']];
+const REP_COLS_ACUM=REP_COLS.concat([['ESTADO','estado'],['CIERRE','cierre']]);
+const repEsc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad2=n=>String(n).padStart(2,'0');
+
+function onTimeISO(str){
+  str=String(str||'').trim();let m;
+  if((m=str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?/)))
+    return`${m[1]}-${m[2]}-${m[3]}T${pad2(m[4])}:${m[5]}:${m[6]||'00'}`;
+  if((m=str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/)))   // d/m/aaaa
+    return`${m[3]}-${pad2(m[2])}-${pad2(m[1])}T${pad2(m[4])}:${m[5]}:${m[6]||'00'}`;
+  return'';
+}
+function isoMs(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);return m?Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6]):NaN;}
+const localNaiveMs=d=>Date.UTC(d.getFullYear(),d.getMonth(),d.getDate(),d.getHours(),d.getMinutes(),d.getSeconds());
+function fmtDurMs(ms){let t=Math.max(0,Math.floor(ms/1000));const d=Math.floor(t/86400);t-=d*86400;const h=Math.floor(t/3600);t-=h*3600;const m=Math.floor(t/60);return`${d}:${h}:${m}:${t-m*60}`;}
+function fmtNaive(ms){if(isNaN(ms))return'';const d=new Date(ms);return`${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth()+1)}/${d.getUTCFullYear()} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;}
+
+function textoDetalle(causa,esRaiz,redRoot,rootInf){
+  if(causa==='PRONATEL')return esRaiz
+    ?`Se reporta incidente crítico en el Proyecto Lambayeque, correspondiente a un corte de servicio que viene afectando la red ${redRoot}`
+    :`depende de corte de servicio en la red ${redRoot}`;
+  const base={ENERGETICO:'interrupción de servicio por corte de energía comercial',RADIO:'interrupción de servicio por interferencia de radioenlace',SOCIAL:'interrupción de servicio por causa social'}[causa]||'causa por definir';
+  return esRaiz?base:`depende de ${rootInf}, ${base}`;
+}
+
+// Filas del reporte "actual" (una por nodo sin servicio, agrupadas por incidencia, raíz primero)
+function construirFilasActuales(){
+  if(!resultados_global||!_infAlarmsActual)return[];
+  const ia=_infAlarmsActual,nodes=nodesGlobal,rows=[];
+  const ovrC=overrides_global.causas||{},ovrS=overrides_global.sociales||{};
+  for(const inc of resultados_global.incidencias){
+    const causa=(ovrC[inc.root]&&ovrC[inc.root].causa)||inc.causa;
+    const rn=nodes[inc.root]||{};
+    const rootInf=(ia[inc.root]&&ia[inc.root].node_name)||rn.infinera||inc.root;
+    const redRoot=String(rn.red||(geo_global[inc.root]||{}).transp||'').trim().replace(/\s+/g,'_');
+    const rootNombre=(rn.name||inc.root).replace(/_/g,' ');
+    const miembros=[...inc.members].sort((a,b)=>(a===inc.root?-1:b===inc.root?1:0)||String(ia[a]&&ia[a].fault).localeCompare(String(ia[b]&&ia[b].fault),undefined,{numeric:true}));
+    for(const code of miembros){
+      const a=ia[code]||{},n=nodes[code]||{},g=geo_global[code]||{};
+      const esRaiz=code===inc.root;
+      const aj=[];
+      if(ovrC[inc.root])aj.push('Causa modificada manualmente');
+      if(ovrS[inc.root]||(esRaiz&&SOCIAL_OVR.has(inc.root)))aj.push('Causa social (manual)');
+      else if(!esRaiz&&(ovrS[code]||SOCIAL_OVR.has(code)))aj.push('Nodo social');
+      if((inc.anexados||[]).includes(code))aj.push(`Anexado a evento ${rootNombre}`);
+      rows.push({
+        fault:a.fault||'',node:a.node_name||n.infinera||code,dur:a.dur||'',ot:onTimeISO(a.on_time),
+        causa,tipo:REP_TIPO[causa]||causa,detalle:textoDetalle(causa,esRaiz,redRoot,rootInf),
+        depende:esRaiz?'NO':'SI',imp:inc.count,code,
+        red:String(n.red||g.transp||'').replace(/_/g,' '),
+        dep:g.dep||'',prov:g.prov||'',dist:g.dist||'',loc:g.loc||'',
+        tn:String(n.tipo||'').toUpperCase(),aj:aj.join(' | ')
+      });
+    }
+  }
+  return rows;
+}
+const filtrarVista=(rows,v)=>v==='tx'?rows.filter(r=>r.causa==='PRONATEL'):v==='otros'?rows.filter(r=>r.causa!=='PRONATEL'):rows;
+
+// ── Registro histórico (Drive) ──
+async function cargarRegistro(){
+  try{
+    const r=await prx('get','reportes');
+    if(r.ok&&r.data){
+      const bin=atob(r.data.replace(/\s/g,''));const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      reg_global=JSON.parse(new TextDecoder().decode(bytes));
+      if(!reg_global.eventos)reg_global.eventos={};
+    }else reg_global={eventos:{},ultima_lectura:''};
+  }catch(e){console.warn('Registro:',e.message);if(!reg_global)reg_global={eventos:{},ultima_lectura:'',_error:e.message};}
+}
+async function sincronizarRegistro(){
+  if(_syncEnCurso||!resultados_global||!_infAlarmsActual||!lectura_inf_global)return;
+  _syncEnCurso=true;
+  try{
+    const eventos=construirFilasActuales().map(f=>({
+      id:f.fault?String(f.fault):'S:'+f.code+':'+f.ot,fault:f.fault,code:f.code,node:f.node,on_time:f.ot,duration:f.dur,
+      tipo:f.tipo,causa:f.causa,detalle:f.detalle,depende:f.depende,impactados:f.imp,red:f.red,tipo_nodo:f.tn,ajuste:f.aj}));
+    const r=await fetch(PROXY,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action:'registrarSnapshot',lectura:lectura_inf_global,eventos}),redirect:'follow'});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||'respuesta no válida');
+    await cargarRegistro();
+    window._repSync={ok:true,ts:new Date(),res:j};
+  }catch(e){
+    console.warn('Sync registro:',e.message);
+    window._repSync={ok:false,ts:new Date(),error:e.message};
+    if(!reg_global)await cargarRegistro();
+  }finally{_syncEnCurso=false;renderReportes();}
+}
+function filasDesdeRegistro(mesStr){
+  const mm=String(mesStr||'').match(/^(\d{4})-(\d{2})$/);if(!mm)return[];
+  const ini=Date.UTC(+mm[1],+mm[2]-1,1),fin=Date.UTC(+mm[1],+mm[2],1)-1;
+  const out=[];
+  for(const ev of Object.values((reg_global&&reg_global.eventos)||{})){
+    const ot=isoMs(ev.on_time);if(isNaN(ot)||ot>fin)continue;
+    const ci=ev.cierre?localNaiveMs(new Date(ev.cierre)):null;
+    if(ci!=null&&ci<ini)continue;
+    const g=geo_global[ev.code]||{};
+    out.push({fault:ev.fault||'',node:ev.node,dur:ci!=null?fmtDurMs(ci-ot):(ev.duration||''),ot:ev.on_time,causa:ev.causa,tipo:ev.tipo,
+      detalle:ev.detalle,depende:ev.depende,imp:ev.impactados,code:ev.code,red:ev.red||String(g.transp||''),
+      dep:g.dep||'',prov:g.prov||'',dist:g.dist||'',loc:g.loc||'',tn:ev.tipo_nodo,aj:ev.ajuste||'',
+      estado:ev.cierre?'Cerrado':'Activo',cierre:ci!=null?fmtNaive(ci):'',_ot:ot});
+  }
+  return out.sort((a,b)=>a._ot-b._ot||String(a.fault).localeCompare(String(b.fault),undefined,{numeric:true}));
+}
+
+// ── Pantalla ──
+function setRepVista(v){
+  rep_vista=v;
+  document.querySelectorAll('.rchip').forEach(b=>b.classList.toggle('active',b.dataset.v===v));
+  renderReportes();
+}
+function renderReportes(){
+  const tab=document.getElementById('tab-rep');if(!tab||!tab.classList.contains('active'))return;
+  const mesEl=document.getElementById('rep-mes');
+  if(!mesEl.value){const n=new Date();mesEl.value=`${n.getFullYear()}-${pad2(n.getMonth()+1)}`;}
+  document.getElementById('rep-mes-wrap').style.display=rep_vista==='acum'?'':'none';
+  const acum=rep_vista==='acum';
+  let rows=acum?filtrarVista(filasDesdeRegistro(mesEl.value),document.getElementById('rep-sub').value):filtrarVista(construirFilasActuales(),rep_vista);
+  const cols=acum?REP_COLS_ACUM:REP_COLS;
+  document.getElementById('rep-thead').innerHTML='<tr>'+cols.map(c=>`<th>${c[0]}</th>`).join('')+'</tr>';
+  document.getElementById('rep-tbody').innerHTML=rows.length?rows.map((f,i)=>'<tr>'+cols.map(c=>{
+    let v=c[1]==='row'?i+1:c[1]==='ot'?fmtNaive(isoMs(f.ot)):f[c[1]];
+    if(c[1]==='tipo'){const clr=CAUSA_CLR[f.causa]||'#6b7280';return`<td><span style="color:${clr};font-weight:600">${repEsc(v)}</span></td>`;}
+    if(c[1]==='estado')return`<td style="color:${v==='Activo'?'#f85149':'#6b7280'}">${repEsc(v)}</td>`;
+    return`<td${c[1]==='detalle'||c[1]==='aj'?' class="wrap"':''}>${repEsc(v)}</td>`;}).join('')+'</tr>').join('')
+    :`<tr><td colspan="${cols.length}" class="no-data">${acum?'Sin eventos registrados para este mes.':'✅ Sin alarmas activas.'}</td></tr>`;
+  const sy=window._repSync;
+  const prox=new Date();prox.setMinutes(7,0,0);if(prox<=new Date())prox.setHours(prox.getHours()+1);
+  document.getElementById('rep-info').innerHTML=
+    `${rows.length} fila(s) · Infinera: ${lectura_inf_global?fmtD(lectura_inf_global):'—'} · `+
+    `${inf_nid_desconocidos.length?'⚠️ nid sin nombre: '+inf_nid_desconocidos.join(', ')+' · ':''}Registro histórico: ${reg_global?Object.keys(reg_global.eventos||{}).length+' eventos':'sin cargar'}`+
+    `${sy?(sy.ok?' · ✅ sincronizado '+pad2(sy.ts.getHours())+':'+pad2(sy.ts.getMinutes()):' · ⚠️ sin sincronizar: '+repEsc(sy.error)):''}`+
+    ` · próxima actualización automática ${pad2(prox.getHours())}:07`;
+}
+
+// ── Excel ──
+function hojaDeFilas(filas,cols){
+  const aoa=[cols.map(c=>c[0])];
+  filas.forEach((f,i)=>aoa.push(cols.map(c=>{
+    if(c[1]==='row')return i+1;
+    if(c[1]==='ot'){const ms=isoMs(f.ot);return isNaN(ms)?'':ms/86400000+25569;}
+    if(c[1]==='fault')return/^\d+$/.test(String(f.fault))?Number(f.fault):(f.fault||'');
+    return f[c[1]]==null?'':f[c[1]];})));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  const iOt=cols.findIndex(c=>c[1]==='ot');
+  for(let r=1;r<aoa.length;r++){const a=XLSX.utils.encode_cell({r,c:iOt});if(ws[a]&&typeof ws[a].v==='number')ws[a].z='yyyy-mm-dd hh:mm:ss';}
+  const W={row:6,fault:10,node:34,dur:10,ot:19,tipo:17,detalle:80,depende:8,imp:10,code:11,red:18,dep:13,prov:13,dist:15,loc:20,tn:11,aj:34,estado:9,cierre:17};
+  ws['!cols']=cols.map(c=>({wch:W[c[1]]||12}));
+  ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(aoa.length-1,0),c:cols.length-1}})};
+  return ws;
+}
+function descargarReporteActual(){
+  const filas=construirFilasActuales();
+  if(!filas.length){flash('No hay alarmas activas para exportar','err');return;}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,hojaDeFilas(filas,REP_COLS),'Todos los nodos');
+  XLSX.utils.book_append_sheet(wb,hojaDeFilas(filtrarVista(filas,'tx'),REP_COLS),'Red de TX');
+  XLSX.utils.book_append_sheet(wb,hojaDeFilas(filtrarVista(filas,'otros'),REP_COLS),'Otras causas');
+  const n=new Date();
+  XLSX.writeFile(wb,`Reporte_Averias_Activas_${n.getFullYear()}${pad2(n.getMonth()+1)}${pad2(n.getDate())}_${pad2(n.getHours())}${pad2(n.getMinutes())}.xlsx`);
+}
+async function descargarReporteAcum(){
+  if(!reg_global)await cargarRegistro();
+  const mes=document.getElementById('rep-mes').value||`${new Date().getFullYear()}-${pad2(new Date().getMonth()+1)}`;
+  const filas=filasDesdeRegistro(mes);
+  if(!filas.length){flash('Sin eventos registrados en '+mes,'err');return;}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,hojaDeFilas(filas,REP_COLS_ACUM),'Acumulado '+mes);
+  XLSX.utils.book_append_sheet(wb,hojaDeFilas(filtrarVista(filas,'tx'),REP_COLS_ACUM),'Red de TX');
+  XLSX.utils.book_append_sheet(wb,hojaDeFilas(filtrarVista(filas,'otros'),REP_COLS_ACUM),'Otras causas');
+  XLSX.writeFile(wb,`Reporte_Acumulado_${mes}.xlsx`);
+}
+
+// ── Actualización automática: cada hora + 7 min (12:07, 13:07, ...) ──
+function programarRefrescoHorario(){
+  const now=new Date(),t=new Date(now);t.setMinutes(7,0,0);if(t<=now)t.setHours(t.getHours()+1);
+  setTimeout(async()=>{try{if(!cargando)await cargarTodo(false);}catch(e){console.warn('Refresco horario:',e.message);}programarRefrescoHorario();},t-now);
 }
 
 // ── v14 · Anexar evento previo a un evento masivo ────────────────────
@@ -3318,6 +3589,7 @@ async function guardarRegistroLog(){
 cargarSesionGuardada(); // restaura sesión si sigue vigente (12h)
 resize();fitView();updateStats();draw();
 cargarTodo();   // carga automática al abrir la página
+programarRefrescoHorario();   // v15: recarga cada hora + 7 min
 
 </script>
 </body>
