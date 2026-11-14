@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Estado Red Acceso — Lambayeque v16</title>
+<title>Estado Red Acceso — Lambayeque v17</title>
 <script>
 // Implementación SHA-256 pura en JS (FIPS 180-4), sin dependencias.
 // Se usa en vez de crypto.subtle porque el archivo puede abrirse como
@@ -577,6 +577,7 @@ canvas{display:block}
         <div class="li"><div class="ll" style="background:#f97316"></div>Enlace crítico</div>
         <div class="li"><div class="lx" style="border-color:#ef4444"></div>Corte manual</div>
         <div class="li"><div class="lx" style="border-color:#fb923c"></div>Corte auto (Infinera)</div>
+        <div class="li"><div class="lx" style="border-color:#ef4444;border-bottom:3px dashed #fb923c;height:3px"></div>Manual + auto (doble línea)</div>
       </div>
     </div>
   </div>
@@ -949,7 +950,7 @@ let neteco_map_global={}; // {SITE_NAME_UPPER: codigo} — reutilizado por tab O
 let resultados_global=null;
 let cargando=false;
 // Overrides: cargados desde Drive (overrides.json)
-let overrides_global={causas:{},sociales:{},fusiones:{}};
+let overrides_global={causas:{},sociales:{},fusiones:{},cortes:{}};
 let blinkPhase=true;
 let blinkNtIds=new Set();
 let blinkInterval=null;
@@ -975,7 +976,7 @@ let ml_sitio_prefill=null;     // sitio preseleccionado al abrir modal desde det
 const SESSION_KEY='plby_session_v1';
 let session={token:null,rol:null,user:null,nombre:null,exp:0};
 let login_pending_action=null; // función a ejecutar tras login exitoso
-const HOY=()=>new Date().toISOString().slice(0,10); // "YYYY-MM-DD"
+const HOY=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}; // "YYYY-MM-DD" en hora LOCAL (v17: antes era UTC)
 
 // ═══════════════════════════════════════════════════════════════════
 //  SIMULADOR — CANVAS
@@ -1111,12 +1112,21 @@ function draw(){
     const isHov=hov===i,isCrit=criticos_idx.has(i)&&!cortado;
     const ap=NTP[a],bp=NTP[b];if(!ap||!bp)continue;
     const[ax,ay]=toC(ap.x,ap.y),[bx,by]=toC(bp.x,bp.y);
+    if(cortado_m&&cortado_a){
+      // v17 · corte manual Y automático a la vez → DOBLE LÍNEA PARALELA (naranja = Infinera, roja = manual)
+      const dx=bx-ax,dy=by-ay,L=Math.hypot(dx,dy)||1,off=Math.max(2.5,3.2*Math.min(sc,1.4)),nx=-dy/L*off,ny=dx/L*off;
+      ctx.globalAlpha=1;ctx.lineWidth=isHov?5:2.4;
+      ctx.beginPath();ctx.moveTo(ax+nx,ay+ny);ctx.lineTo(bx+nx,by+ny);ctx.strokeStyle='#fb923c';ctx.setLineDash([8,6]);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(ax-nx,ay-ny);ctx.lineTo(bx-nx,by-ny);ctx.strokeStyle='#ef4444';ctx.setLineDash([10,7]);ctx.stroke();
+      ctx.setLineDash([]);
+    }else{
     ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);
     if(cortado_m){ctx.strokeStyle='#ef4444';ctx.lineWidth=isHov?6:3;ctx.setLineDash([10,7]);ctx.globalAlpha=1;}
     else if(cortado_a){ctx.strokeStyle='#fb923c';ctx.lineWidth=isHov?6:3;ctx.setLineDash([8,6]);ctx.globalAlpha=1;}
     else if(isCrit){ctx.strokeStyle='#f97316';ctx.lineWidth=isHov?5:2.5;ctx.setLineDash([]);ctx.globalAlpha=isHov?1:0.9;}
     else{ctx.strokeStyle=isHov?'#ffffff':(EC[tipo]||'#64748b');ctx.lineWidth=isHov?5:(tipo==='RAMAL'?1.8:2.8);ctx.setLineDash([]);ctx.globalAlpha=isHov?1:0.8;}
     ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+    }
     if(cortado_m){
       const mx=(ax+bx)/2,my=(ay+by)/2,s=7;
       ctx.strokeStyle='#ef4444';ctx.lineWidth=2.5;
@@ -1201,9 +1211,13 @@ canvas.addEventListener('mouseup',e=>{
   const idx=enlaceAt(e.clientX-r.left,e.clientY-r.top);
   if(idx!==null&&modo==='corte'){
     const[a,b]=ENL[idx];const k1=a+'|'+b,k2=b+'|'+a;
-    if(cortados.has(k1)||cortados.has(k2)){cortados.delete(k1);cortados.delete(k2);flash(`✅ Restaurado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'ok');}
-    else{cortados.add(k1);flash(`✂️ Cortado: ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'err');}
-    updateStats();draw();
+    if(cortados.has(k1)||cortados.has(k2)){
+      cortados.delete(k1);cortados.delete(k2);delete overrides_global.cortes[k1];delete overrides_global.cortes[k2];
+      flash(`✅ Restaurado (para todos): ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'ok');}
+    else{
+      cortados.add(k1);overrides_global.cortes[k1]={fecha:HOY(),ts:new Date().toISOString()};
+      flash(`✂️ Cortado (para todos hasta fin del día): ${NTP[a]?.nombre||a} ↔ ${NTP[b]?.nombre||b}`,'err');}
+    updateStats();draw();guardarOverridesRemoto();
   }
 });
 canvas.addEventListener('wheel',e=>{
@@ -1217,8 +1231,9 @@ function flash(txt,tipo){
   el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2500);
 }
 function resetAll(){
-  cortados.clear();criticos_idx.clear();
-  updateStats();draw();
+  if(cortados.size>0&&!confirm('Se restaurarán TODOS los cortes manuales para todos los usuarios que usan esta página. ¿Continuar?'))return;
+  cortados.clear();criticos_idx.clear();overrides_global.cortes={};
+  updateStats();draw();guardarOverridesRemoto();
   flash('✅ Cortes manuales restaurados (Infinera activo)','ok');
 }
 function setModo(m){
@@ -1229,8 +1244,10 @@ function setModo(m){
 function mostrarCriticos(){
   criticos_idx.clear();
   for(let i=0;i<ENL.length;i++){
-    const[a,b]=ENL[i];const k=a+'|'+b;cortados.add(k);
-    const{fallen}=calcImpacto();cortados.delete(k);
+    const[a,b]=ENL[i];const k=a+'|'+b;
+    const yaCortado=cortados.has(k)||cortados.has(b+'|'+a);   // v17: no borrar un corte manual compartido
+    cortados.add(k);
+    const{fallen}=calcImpacto();if(!yaCortado)cortados.delete(k);
     if(fallen.size>0)criticos_idx.add(i);
   }
   draw();flash(`⚠️ ${criticos_idx.size} enlace(s) crítico(s) en naranja`,'warn');
@@ -2468,36 +2485,110 @@ function toggleCi(code){
 // ═══════════════════════════════════════════════════════════════════
 //  OVERRIDES — carga / guardado / limpieza diaria
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  v17 · OVERRIDES COMPARTIDOS (causas, sociales, fusiones y cortes manuales)
+//  Se guardan como PARCHES por clave (proxy v7 · patchOverrides, con candado),
+//  de modo que dos personas editando a la vez no se pisan. Cada página consulta
+//  cambios cada ~90 s y los aplica (los cortes se ven en <2 min en todas).
+// ═══════════════════════════════════════════════════════════════════
+const OVR_MAPS=['causas','sociales','fusiones','cortes'];
+let _ovrBase={causas:{},sociales:{},fusiones:{},cortes:{},last_reset:''};
+const clonarOvr=o=>JSON.parse(JSON.stringify(o));
+function normalizarOvr(o){o=o||{};return{causas:o.causas||{},sociales:o.sociales||{},fusiones:o.fusiones||{},cortes:o.cortes||{},last_reset:o.last_reset||''};}
+function diffOvr(base,cur){
+  const ops=[];
+  for(const m of OVR_MAPS){
+    const b=base[m]||{},c=cur[m]||{};
+    for(const k of new Set([...Object.keys(b),...Object.keys(c)]))
+      if(JSON.stringify(b[k])!==JSON.stringify(c[k]))ops.push({m,k,v:(k in c)?c[k]:null});
+  }
+  if((base.last_reset||'')!==(cur.last_reset||''))ops.push({m:'meta',k:'last_reset',v:cur.last_reset||''});
+  return ops;
+}
+function decodificarB64Json(b64){
+  const bin=atob(b64.replace(/\s/g,''));const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+async function postProxy(obj){
+  const r=await fetch(PROXY,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(obj),redirect:'follow'});
+  return r.json();
+}
+// Cortes manuales compartidos: reconstruye el conjunto que dibuja el simulador (solo los de HOY)
+function reconstruirCortes(){
+  const hoy=HOY();cortados.clear();
+  for(const[k,v]of Object.entries(overrides_global.cortes||{}))if(v&&v.fecha===hoy)cortados.add(k);
+  try{updateStats();draw();}catch{}
+}
+function limpiarCortesViejos(){ // fin del día: los cortes de días anteriores caducan
+  const hoy=HOY();let n=0;
+  for(const[k,v]of Object.entries(overrides_global.cortes||{}))if(!v||v.fecha!==hoy){delete overrides_global.cortes[k];n++;}
+  return n;
+}
+
 async function cargarOverrides(){
   try{
     const r=await prx('get','overrides');
     if(r.ok&&r.data){
-      const bin=atob(r.data.replace(/\s/g,''));
-      const bytes=new Uint8Array(bin.length);
-      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
-      const txt=new TextDecoder().decode(bytes);
-      const obj=JSON.parse(txt);
-      overrides_global={causas:obj.causas||{},sociales:obj.sociales||{},fusiones:obj.fusiones||{},last_reset:obj.last_reset||''};
+      const obj=decodificarB64Json(r.data);
+      overrides_global=normalizarOvr(obj);
+      _ovrBase=clonarOvr(overrides_global);
     }
-  }catch{overrides_global={causas:{},sociales:{},fusiones:{},last_reset:''};}
-  // Limpieza diaria: si hoy es un día nuevo → borra causas (NO sociales)
-  const hoy=HOY();
-  if(overrides_global.last_reset!==hoy){
-    const nBorradas=Object.keys(overrides_global.causas||{}).length;
-    overrides_global.causas={};overrides_global.last_reset=hoy;
-    if(nBorradas>0)await guardarOverridesRemoto();
-  }
+  }catch{overrides_global=normalizarOvr({});_ovrBase=clonarOvr(overrides_global);}
+  // Limpieza diaria (hora LOCAL): causas se reinician (NO sociales ni fusiones); cortes de días anteriores caducan
+  const hoy=HOY();let cambio=false;
+  if(overrides_global.last_reset!==hoy){overrides_global.causas={};overrides_global.last_reset=hoy;cambio=true;}
+  if(limpiarCortesViejos()>0)cambio=true;
+  if(cambio)await guardarOverridesRemoto();
+  reconstruirCortes();
   renderPanelSocial();
 }
 
 async function guardarOverridesRemoto(){
+  let ops=[];
   try{
-    const json=JSON.stringify(overrides_global);
-    const b64=btoa(unescape(encodeURIComponent(json)));
-    const r=await prx('setOverrides','',b64);
-    if(!r.ok)console.warn('Error guardando overrides:',r.error);
+    ops=diffOvr(_ovrBase,overrides_global);
+    if(ops.length){
+      const r=await postProxy({action:'patchOverrides',ops});
+      if(r.ok&&r.data){
+        // El servidor devuelve el estado fusionado (incluye cambios de otros usuarios)
+        overrides_global=normalizarOvr(r.data);_ovrBase=clonarOvr(overrides_global);
+      }else if(/inv[aá]lida/i.test(r.error||'')){
+        // Proxy anterior a v7: guardado completo como antes
+        const b64=btoa(unescape(encodeURIComponent(JSON.stringify(overrides_global))));
+        const r2=await prx('setOverrides','',b64);
+        if(r2.ok)_ovrBase=clonarOvr(overrides_global);else console.warn('Error guardando overrides:',r2.error);
+      }else console.warn('Error guardando overrides:',r.error);
+    }
   }catch(e){console.warn('Override save failed:',e.message);}
-  setTimeout(()=>{try{sincronizarRegistro();}catch{}},1500); // v15: refleja ajustes manuales en el histórico
+  setTimeout(()=>{try{
+    if(ops.some(o=>o.m!=='cortes'&&o.m!=='meta')&&typeof reanalizarConCache==='function')reanalizarConCache();
+    sincronizarRegistro();   // el histórico refleja lo que dice el dashboard
+  }catch{}},1200);
+}
+
+// Consulta periódica: aplica cambios hechos por otros compañeros (cortes, causas, sociales, anexiones)
+let _pollOvrEnCurso=false;
+async function refrescarOverridesRemoto(){
+  if(_pollOvrEnCurso||cargando)return;
+  if(['modal-ovr','modal-fus'].some(id=>{const e=document.getElementById(id);return e&&e.classList.contains('open');}))return;
+  _pollOvrEnCurso=true;
+  try{
+    // caducidad de cortes al cambiar el día con la página abierta
+    if(Object.values(overrides_global.cortes||{}).some(v=>!v||v.fecha!==HOY())){
+      if(limpiarCortesViejos()>0){reconstruirCortes();await guardarOverridesRemoto();}
+    }
+    const r=await prx('get','overrides');
+    if(!(r.ok&&r.data))return;
+    const nuevo=normalizarOvr(decodificarB64Json(r.data));
+    if(JSON.stringify(nuevo)===JSON.stringify(_ovrBase))return;
+    // si hay cambios locales sin guardar, no se pisan
+    if(diffOvr(_ovrBase,overrides_global).length)return;
+    overrides_global=nuevo;_ovrBase=clonarOvr(nuevo);
+    reconstruirCortes();renderPanelSocial();
+    if(typeof reanalizarConCache==='function')reanalizarConCache();
+  }catch(e){console.warn('Poll overrides:',e.message);}
+  finally{_pollOvrEnCurso=false;}
 }
 
 // ── Modal edición causa ─────────────────────────────────
@@ -2681,12 +2772,12 @@ function renderReportes(){
     return`<td${c[1]==='detalle'||c[1]==='aj'?' class="wrap"':''}>${repEsc(v)}</td>`;}).join('')+'</tr>').join('')
     :`<tr><td colspan="${cols.length}" class="no-data">${acum?'Sin eventos registrados para este mes.':'✅ Sin alarmas activas.'}</td></tr>`;
   const sy=window._repSync;
-  const prox=new Date();prox.setMinutes(7,0,0);if(prox<=new Date())prox.setHours(prox.getHours()+1);
+  const prox=proximoRefresco();
   document.getElementById('rep-info').innerHTML=
     `${rows.length} fila(s) · Infinera: ${lectura_inf_global?fmtD(lectura_inf_global):'—'} · `+
     `${inf_nid_desconocidos.length?'⚠️ nid sin nombre: '+inf_nid_desconocidos.join(', ')+' · ':''}Registro histórico: ${reg_global?Object.keys(reg_global.eventos||{}).length+' eventos':'sin cargar'}`+
     `${sy?(sy.ok?' · ✅ sincronizado '+pad2(sy.ts.getHours())+':'+pad2(sy.ts.getMinutes()):' · ⚠️ sin sincronizar: '+repEsc(sy.error)):''}`+
-    ` · próxima actualización automática ${pad2(prox.getHours())}:07`;
+    ` · próxima actualización automática ${pad2(prox.getHours())}:${pad2(prox.getMinutes())}`;
 }
 
 // ── Excel ──
@@ -2728,9 +2819,14 @@ async function descargarReporteAcum(){
 }
 
 // ── Actualización automática: cada hora + 7 min (12:07, 13:07, ...) ──
-function programarRefrescoHorario(){
-  const now=new Date(),t=new Date(now);t.setMinutes(7,0,0);if(t<=now)t.setHours(t.getHours()+1);
-  setTimeout(async()=>{try{if(!cargando)await cargarTodo(false);}catch(e){console.warn('Refresco horario:',e.message);}programarRefrescoHorario();},t-now);
+function proximoRefresco(){
+  const n=new Date(),t=new Date(n),m=n.getMinutes();
+  if(m<7)t.setMinutes(7,0,0);else if(m<37)t.setMinutes(37,0,0);else{t.setHours(t.getHours()+1);t.setMinutes(7,0,0);}
+  return t;
+}
+function programarRefrescoHorario(){   // v17: cada 30 min, a los :07 y :37 (Drive se carga a ~:05 y :35)
+  const t=proximoRefresco();
+  setTimeout(async()=>{try{if(!cargando)await cargarTodo(false);}catch(e){console.warn('Refresco automático:',e.message);}programarRefrescoHorario();},t-new Date());
 }
 
 // ── v14 · Anexar evento previo a un evento masivo ────────────────────
@@ -3589,7 +3685,8 @@ async function guardarRegistroLog(){
 cargarSesionGuardada(); // restaura sesión si sigue vigente (12h)
 resize();fitView();updateStats();draw();
 cargarTodo();   // carga automática al abrir la página
-programarRefrescoHorario();   // v15: recarga cada hora + 7 min
+programarRefrescoHorario();   // v17: recarga cada 30 min (:07 y :37)
+setInterval(refrescarOverridesRemoto,90000);   // v17: cambios de otros compañeros en <2 min
 
 </script>
 </body>
