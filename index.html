@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Estado Red Acceso — Lambayeque v17</title>
+<title>Estado Red Acceso — Lambayeque v19</title>
 <script>
 // Implementación SHA-256 pura en JS (FIPS 180-4), sin dependencias.
 // Se usa en vez de crypto.subtle porque el archivo puede abrirse como
@@ -150,6 +150,10 @@ body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;overflow
 .rchip{background:#161b22;border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:inherit}
 .rchip.active{background:#1f6feb22;border-color:#1f6feb;color:#58a6ff}
 #rep-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#rep-busq-wrap{position:relative;display:inline-flex;align-items:center}
+#rep-buscar{width:300px;padding-right:24px!important}
+#rep-buscar-x{position:absolute;right:4px;background:none;border:none;color:#8b949e;cursor:pointer;font-size:11px;padding:2px 4px}
+#rep-buscar-x:hover{color:#e6edf3}
 #rep-ctl input,#rep-ctl select{background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:4px 6px;font-size:11px;font-family:inherit}
 .rbtn{background:#238636;border:1px solid #2ea043;color:#fff;border-radius:6px;padding:5px 11px;font-size:11px;cursor:pointer;font-family:inherit}
 .rbtn:hover{background:#2ea043}
@@ -510,6 +514,7 @@ canvas{display:block}
       <button class="rchip" data-v="acum" onclick="setRepVista('acum')">Acumulado del mes</button>
     </div>
     <div id="rep-ctl">
+      <span id="rep-busq-wrap"><input type="text" id="rep-buscar" placeholder="🔍 Buscar: nodo, fecha, tipo, código o fault id…" oninput="buscarReporteDebounce()" autocomplete="off"><button id="rep-buscar-x" onclick="limpiarBusqueda()" title="Limpiar búsqueda" style="display:none">✕</button></span>
       <span id="rep-mes-wrap" style="display:none">
         <input type="month" id="rep-mes" onchange="renderReportes()">
         <select id="rep-sub" onchange="renderReportes()"><option value="todos">Todos</option><option value="tx">Red de TX</option><option value="otros">Otras causas</option></select>
@@ -578,6 +583,7 @@ canvas{display:block}
         <div class="li"><div class="lx" style="border-color:#ef4444"></div>Corte manual</div>
         <div class="li"><div class="lx" style="border-color:#fb923c"></div>Corte auto (Infinera)</div>
         <div class="li"><div class="lx" style="border-color:#ef4444;border-bottom:3px dashed #fb923c;height:3px"></div>Manual + auto (doble línea)</div>
+        <div class="li"><div class="lx" style="background:#ef4444;height:8px;width:8px;border-radius:50%"></div>Acceso caído (transporte en verificación): sin corte de enlaces</div>
       </div>
     </div>
   </div>
@@ -901,6 +907,7 @@ canvas{display:block}
     <textarea id="modal-nota" placeholder="Nota del técnico (opcional)..."></textarea>
     <div class="modal-btns">
       <button class="mbtn mbtn-sec" onclick="cerrarModal()">Cancelar</button>
+      <button class="mbtn mbtn-sec" id="modal-quitar" style="display:none;margin-right:auto" onclick="quitarOverrideCausa()">↩ Volver a automático</button>
       <button class="mbtn mbtn-pri" onclick="guardarOverride()">Guardar</button>
     </div>
   </div>
@@ -942,6 +949,7 @@ for(const[code,n]of Object.entries(ACC)){
 //  ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════
 const cortados=new Set(),cortados_auto=new Set(),criticos_idx=new Set();
+let accesoCaido=new Set(),transpCaido=new Set(); // v18: distritales con solo el acceso caído / con transporte inferido caído
 let modo='corte',sc=1,ox=80,oy=120,drag=false,lx=0,ly=0,hov=null;
 // NTD inverso: code → topologyId (se construye una vez al cargar datos)
 let ntd_rev=null;
@@ -1007,12 +1015,14 @@ function calcImpacto(){
   const alc=getAlc(),ais=Object.keys(NTP).filter(k=>!alc.has(k));
   const fallen=new Set();
   for(const nt of ais){const d=NTD[nt];if(d)fallen.add(d);}
+  for(const c of accesoCaido)fallen.add(c); // v18: acceso caído sin corte de transporte
   // Cascada jerárquica ACC (intermedios y terminales)
   let changed=true;
   while(changed){
     changed=false;
     for(const[cod,node]of Object.entries(ACC)){
       if(fallen.has(cod))continue;
+      if(node.tipo==='DISTRITAL')continue; // v18: un distrital cae por transporte/alarma, no por cascada jerárquica
       const ps=node.padres||[];
       if(ps.length>0&&ps.every(p=>fallen.has(p))){fallen.add(cod);changed=true;}
     }
@@ -1032,6 +1042,7 @@ function updateStats(){
   const term=[...fallen].filter(c=>(ACC[c]||nodesGlobal[c])?.tipo==='TERMINAL');
   const tot=fallen.size;
   document.getElementById('s-ct').textContent=tot;
+  {const nA=resultados_global&&resultados_global.sin_servicio?resultados_global.sin_servicio.size:0;const el=document.getElementById('s-ct');el.title=`${nA} con alarma + ${tot-nA} por cascada (dashboard = ${nA})`;let sp=document.getElementById('s-split');if(!sp){sp=document.createElement('div');sp.id='s-split';sp.style.cssText='font-size:9px;color:#fbbf24;margin-top:2px';el.parentNode.appendChild(sp);}sp.textContent=`${nA} alarma + ${tot-nA} cascada`;}
   document.getElementById('s-at').textContent=TOT.total-tot;
   document.getElementById('s-dc').textContent=dist.length;
   document.getElementById('s-da').textContent=TOT.D-dist.length;
@@ -1495,9 +1506,28 @@ function tieneEnergiaPrevia(code,comm_time,neteco_energy){
   return false;
 }
 
+// v17 · Un ✏️ cambio de causa dura mientras el evento siga activo (no se reinicia a medianoche).
+// Es válido solo si el nodo raíz sigue caído con la MISMA alarma (on_time guardado al marcar).
+// Se quita a mano con "↩ Volver a automático", o caduca solo cuando el evento termina.
+function causaOvrVigente(code,ia){
+  const o=(overrides_global.causas||{})[code];
+  if(!o)return null;
+  if(ia){
+    if(!ia[code])return null;                                   // el nodo ya no está caído
+    if(o.on_time&&ia[code].on_time!==o.on_time)return null;     // es otra caída distinta
+  }
+  return o;
+}
+function limpiarCausasCaducadas(ia){
+  let n=0;
+  for(const code of Object.keys(overrides_global.causas||{}))
+    if(!causaOvrVigente(code,ia)){delete overrides_global.causas[code];n++;}
+  return n;
+}
+
 function clasificarRaiz(code,nodes_all,inf_alarms,neteco_comm,neteco_energy){
   // 1. Override manual de causa raíz (técnico editó)
-  const ovrCausa=(overrides_global.causas||{})[code];
+  const ovrCausa=causaOvrVigente(code,inf_alarms);
   if(ovrCausa)return{causa:ovrCausa.causa,detalle:ovrCausa.nota?`✏️ ${ovrCausa.nota}`:'Override manual'};
   // 2. Override social dinámico (gestión desde panel)
   if((overrides_global.sociales||{})[code])
@@ -1758,7 +1788,7 @@ function construirTexto(inc){
 
   // ── Nota del técnico: si existe, reemplaza el DETALLE automático
   //    tanto en dashboard como en PPTX (construirTexto es la fuente única)
-  const nota_tecnico=((overrides_global.causas||{})[inc.root]||{}).nota||'';
+  const nota_tecnico=(causaOvrVigente(inc.root,_infAlarmsActual)||{}).nota||'';
 
   if(inc.count===1){
     const titulo=`${nombre_uc} (${red})`;
@@ -1809,7 +1839,7 @@ function actualizarDashboard({incidencias,sin_servicio}){
       const clr=CAUSA_CLR[inc.causa]||'#6b7280';
       const lbl=CAUSA_LABELS[inc.causa]||inc.causa;
       const dm=inc.intermitencia?`<span style="color:#f59e0b;cursor:pointer" onclick="toggleOlas(${i})" title="Ver desglose por ola de caída">${inc.root_days}⚠</span>`:inc.root_days;
-      const hasOvr=!!(overrides_global.causas||{})[inc.root];
+      const hasOvr=!!causaOvrVigente(inc.root,_infAlarmsActual);
       const editTitle=hasOvr?'Override activo — clic para editar':'Editar causa raíz';
       // Si el detalle viene de nota del técnico → añadir indicador visual
       const detalle_html=es_nota
@@ -1920,16 +1950,27 @@ function buildNtdRev(){
 
 function actualizarSimulador(sin_servicio){
   if(!ntd_rev)buildNtdRev();
-  cortados_auto.clear();
-  // Para cada distrital sin servicio → cortar todos sus enlaces en la topología
+  cortados_auto.clear();accesoCaido=new Set();transpCaido=new Set();
+  // v18 · el transporte no se ve: se infiere. Si el transporte de un distrital cae, TODO lo que
+  // cuelga de él (aguas abajo) pierde enlace. Aguas abajo = NT que quedan inalcanzables desde LAS_BRISAS
+  // al quitar ese NT. Si algún distrital aguas abajo está en línea → su transporte funciona y el problema
+  // es solo de acceso (no se cortan enlaces ni se arrastra el árbol).
+  const aguasAbajo=ntId=>{
+    const vis=new Set(),q=['LAS_BRISAS'];
+    while(q.length){const cur=q.shift();if(vis.has(cur)||cur===ntId)continue;vis.add(cur);
+      for(const[a,b]of ENL.map(e=>[e[0],e[1]])){if(a===cur&&b!==ntId)q.push(b);if(b===cur&&a!==ntId)q.push(a);}}
+    return Object.keys(NTP).filter(k=>k!==ntId&&!vis.has(k));
+  };
   for(const code of sin_servicio){
     const ntId=ntd_rev[code];
     if(!ntId)continue;
-    for(const[a,b]of ENL.map(e=>[e[0],e[1]])){
-      if(a===ntId||b===ntId)cortados_auto.add(a+'|'+b);
-    }
+    const dep=aguasAbajo(ntId).map(k=>NTD[k]).filter(Boolean);
+    const todosCaidos=dep.every(d=>sin_servicio.has(d)); // sin distritales abajo → true
+    if(todosCaidos){
+      transpCaido.add(code);
+      for(const[a,b]of ENL.map(e=>[e[0],e[1]])){if(a===ntId||b===ntId)cortados_auto.add(a+'|'+b);}
+    }else accesoCaido.add(code);
   }
-  // El BFS de getAlc() respetará cortados_auto → cascada ACC natural
   updateStats();draw();
 }
 
@@ -1999,6 +2040,8 @@ async function cargarTodo(manual=false){
     _infAlarmsActual=inf_alarms;
     const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
     resultados_global=res;
+    // v17: ✏️ de eventos ya terminados caducan solos (solo si hay alarmas leídas: un archivo vacío/erróneo no borra nada)
+    if(Object.keys(inf_alarms).length&&limpiarCausasCaducadas(inf_alarms)>0)guardarOverridesRemoto();
     actualizarPanelGE();
     actualizarSimulador(res.sin_servicio);
   rebuildBlinkSet();
@@ -2410,7 +2453,7 @@ function actualizarPanelLateral(distCodes,fallen){
   const abiertos=new Set();
   lista.querySelectorAll('.ci-bdy.open').forEach(el=>abiertos.add(el.id.replace('cb-','')));
   function getCausa(code){
-    const ovr=(overrides_global.causas||{})[code];if(ovr)return{causa:ovr.causa,manual:true};
+    const ovr=causaOvrVigente(code,_infAlarmsActual);if(ovr)return{causa:ovr.causa,manual:true};
     const soc=(overrides_global.sociales||{})[code];if(soc)return{causa:'SOCIAL',manual:true};
     if(resultados_global){const inc=resultados_global.incidencias.find(i=>i.root===code||i.members&&[...i.members].includes(code));if(inc)return{causa:inc.causa,manual:false};}
     return{causa:'POR_DEFINIR',manual:false};
@@ -2535,9 +2578,9 @@ async function cargarOverrides(){
       _ovrBase=clonarOvr(overrides_global);
     }
   }catch{overrides_global=normalizarOvr({});_ovrBase=clonarOvr(overrides_global);}
-  // Limpieza diaria (hora LOCAL): causas se reinician (NO sociales ni fusiones); cortes de días anteriores caducan
-  const hoy=HOY();let cambio=false;
-  if(overrides_global.last_reset!==hoy){overrides_global.causas={};overrides_global.last_reset=hoy;cambio=true;}
+  // v17: las causas ✏️ ya NO se reinician a diario (duran mientras el evento siga activo);
+  // solo caducan a medianoche los cortes manuales de días anteriores
+  let cambio=false;
   if(limpiarCortesViejos()>0)cambio=true;
   if(cambio)await guardarOverridesRemoto();
   reconstruirCortes();
@@ -2596,7 +2639,8 @@ function abrirEditCausa(root){
   modal_current_root=root;
   const n=nodesGlobal[root]||ACC[root]||{};
   document.getElementById('modal-titulo').textContent=(n.name||n.nombre||root).replace(/_/g,' ');
-  const ovr=(overrides_global.causas||{})[root]||{};
+  const ovr=causaOvrVigente(root,_infAlarmsActual)||{};
+  document.getElementById('modal-quitar').style.display=ovr.causa?'':'none';
   const causaActual=ovr.causa||(resultados_global?.incidencias.find(i=>i.root===root)?.causa)||'POR_DEFINIR';
   document.getElementById('modal-nota').value=ovr.nota||'';
   const causas=[
@@ -2611,6 +2655,15 @@ function abrirEditCausa(root){
   document.getElementById('modal-ovr').classList.add('open');
 }
 
+async function quitarOverrideCausa(){
+  if(!modal_current_root)return;
+  const code=modal_current_root;
+  delete overrides_global.causas[code];
+  cerrarModal();
+  await guardarOverridesRemoto();
+  reanalizarConCache();
+  flash('↩ '+code+' vuelve a la causa automática','ok');
+}
 function selectCausa(k,el){
   document.querySelectorAll('.mo-row').forEach(r=>r.classList.remove('sel'));
   el.classList.add('sel');el.querySelector('input').checked=true;
@@ -2622,8 +2675,8 @@ async function guardarOverride(){
   const sel=document.querySelector('input[name="mo_causa"]:checked');
   if(!sel){alert('Selecciona una causa.');return;}
   const nota=document.getElementById('modal-nota').value.trim();
-  overrides_global.causas[modal_current_root]={causa:sel.value,nota,ts:new Date().toISOString()};
-  overrides_global.last_reset=HOY();
+  const iaR=_infAlarmsActual||{};
+  overrides_global.causas[modal_current_root]={causa:sel.value,nota,ts:new Date().toISOString(),on_time:(iaR[modal_current_root]&&iaR[modal_current_root].on_time)||''};
   cerrarModal();
   await guardarOverridesRemoto();
   flash('✅ Causa actualizada para '+modal_current_root,'ok');
@@ -2672,7 +2725,8 @@ function textoDetalle(causa,esRaiz,redRoot,rootInf){
 function construirFilasActuales(){
   if(!resultados_global||!_infAlarmsActual)return[];
   const ia=_infAlarmsActual,nodes=nodesGlobal,rows=[];
-  const ovrC=overrides_global.causas||{},ovrS=overrides_global.sociales||{};
+  const ovrS=overrides_global.sociales||{};
+  const ovrC={};for(const c of Object.keys(overrides_global.causas||{})){const o=causaOvrVigente(c,ia);if(o)ovrC[c]=o;}
   for(const inc of resultados_global.incidencias){
     const causa=(ovrC[inc.root]&&ovrC[inc.root].causa)||inc.causa;
     const rn=nodes[inc.root]||{};
@@ -2751,6 +2805,10 @@ function filasDesdeRegistro(mesStr){
 }
 
 // ── Pantalla ──
+const normTxt=t=>String(t==null?'':t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+let _busqTimer=null;
+function buscarReporteDebounce(){clearTimeout(_busqTimer);_busqTimer=setTimeout(renderReportes,150);}
+function limpiarBusqueda(){const e=document.getElementById('rep-buscar');e.value='';renderReportes();e.focus();}
 function setRepVista(v){
   rep_vista=v;
   document.querySelectorAll('.rchip').forEach(b=>b.classList.toggle('active',b.dataset.v===v));
@@ -2763,6 +2821,13 @@ function renderReportes(){
   document.getElementById('rep-mes-wrap').style.display=rep_vista==='acum'?'':'none';
   const acum=rep_vista==='acum';
   let rows=acum?filtrarVista(filasDesdeRegistro(mesEl.value),document.getElementById('rep-sub').value):filtrarVista(construirFilasActuales(),rep_vista);
+  // v17 · Buscador: todas las palabras deben coincidir (sin distinguir mayúsculas ni tildes) en
+  // Node Name, On-Time (dd/mm/aaaa hh:mm o aaaa-mm-dd), Tipo de incidencia, Código único y Fault ID
+  const totalFilas=rows.length;
+  const qEl=document.getElementById('rep-buscar'),q=normTxt(qEl.value).trim();
+  document.getElementById('rep-buscar-x').style.display=qEl.value?'':'none';
+  if(q){const terms=q.split(/\s+/);
+    rows=rows.filter(f=>{const h=normTxt([f.node,fmtNaive(isoMs(f.ot)),f.ot,f.tipo,f.code,f.fault].join(' | '));return terms.every(t=>h.includes(t));});}
   const cols=acum?REP_COLS_ACUM:REP_COLS;
   document.getElementById('rep-thead').innerHTML='<tr>'+cols.map(c=>`<th>${c[0]}</th>`).join('')+'</tr>';
   document.getElementById('rep-tbody').innerHTML=rows.length?rows.map((f,i)=>'<tr>'+cols.map(c=>{
@@ -2770,11 +2835,11 @@ function renderReportes(){
     if(c[1]==='tipo'){const clr=CAUSA_CLR[f.causa]||'#6b7280';return`<td><span style="color:${clr};font-weight:600">${repEsc(v)}</span></td>`;}
     if(c[1]==='estado')return`<td style="color:${v==='Activo'?'#f85149':'#6b7280'}">${repEsc(v)}</td>`;
     return`<td${c[1]==='detalle'||c[1]==='aj'?' class="wrap"':''}>${repEsc(v)}</td>`;}).join('')+'</tr>').join('')
-    :`<tr><td colspan="${cols.length}" class="no-data">${acum?'Sin eventos registrados para este mes.':'✅ Sin alarmas activas.'}</td></tr>`;
+    :`<tr><td colspan="${cols.length}" class="no-data">${q?'Ningún resultado para «'+repEsc(qEl.value)+'».':acum?'Sin eventos registrados para este mes.':'✅ Sin alarmas activas.'}</td></tr>`;
   const sy=window._repSync;
   const prox=proximoRefresco();
   document.getElementById('rep-info').innerHTML=
-    `${rows.length} fila(s) · Infinera: ${lectura_inf_global?fmtD(lectura_inf_global):'—'} · `+
+    `${q?rows.length+' de '+totalFilas:rows.length} fila(s) · Infinera: ${lectura_inf_global?fmtD(lectura_inf_global):'—'} · `+
     `${inf_nid_desconocidos.length?'⚠️ nid sin nombre: '+inf_nid_desconocidos.join(', ')+' · ':''}Registro histórico: ${reg_global?Object.keys(reg_global.eventos||{}).length+' eventos':'sin cargar'}`+
     `${sy?(sy.ok?' · ✅ sincronizado '+pad2(sy.ts.getHours())+':'+pad2(sy.ts.getMinutes()):' · ⚠️ sin sincronizar: '+repEsc(sy.error)):''}`+
     ` · próxima actualización automática ${pad2(prox.getHours())}:${pad2(prox.getMinutes())}`;
@@ -2831,6 +2896,49 @@ function programarRefrescoHorario(){   // v17: cada 30 min, a los :07 y :37 (Dri
 
 // ── v14 · Anexar evento previo a un evento masivo ────────────────────
 let fusion_current=null;
+// v19 · Candidatos de anexión: se sube por los padres SOLO mientras el ancestro siga caído (en sin_servicio).
+// El primer ancestro EN LÍNEA corta la ruta: lo que haya más arriba ya no depende de nodos caídos y no entra.
+// Se ofrece el evento (o los eventos, si hay empate por anillo) del ancestro caído MÁS CERCANO.
+function _rutaCaidaHaciaArriba(code){
+  const caidos=resultados_global.sin_servicio,dist={},enLinea=new Set(),q=[[code,0]];
+  while(q.length){const[c,d]=q.shift();
+    for(const p of(nodesGlobal[c]?.padres||[])){
+      if(p===code)continue;
+      if(!caidos.has(p)){enLinea.add(p);continue;}      // ancestro en línea → se rompe la dependencia
+      if(dist[p]===undefined){dist[p]=d+1;q.push([p,d+1]);}
+    }}
+  return{dist,enLinea};
+}
+function renderFusionOpts(todos){
+  const code=fusion_current;if(!code||!resultados_global)return;
+  const nm=c=>(nodesGlobal[c]?.name||nodesGlobal[c]?.nombre||c).replace(/_/g,' ');
+  const{dist:anc,enLinea}=_rutaCaidaHaciaArriba(code);
+  const cand=[];
+  for(const i of resultados_global.incidencias){
+    if(i.root===code)continue;
+    let best=null;
+    for(const m of i.members){const d=anc[m];if(d!==undefined&&(best===null||d<best.d))best={d,m};}
+    cand.push({i,d:best?best.d:null,via:best?best.m:null});
+  }
+  const conRuta=cand.filter(x=>x.d!==null);
+  const dmin=conRuta.length?Math.min(...conRuta.map(x=>x.d)):null;
+  const rel=conRuta.filter(x=>x.d===dmin).sort((x,y)=>y.i.root_days-x.i.root_days);
+  const resto=cand.filter(x=>!rel.includes(x)).sort((x,y)=>(x.d??99)-(y.d??99));
+  const lista=todos?[...rel,...resto]:rel;
+  const filas=lista.map((x,k)=>{
+    const clr=CAUSA_CLR[x.i.causa]||'#6b7280';
+    const rel_txt=x.d===null?'sin relación topológica':`contiene a ${nm(x.via)} (${x.d===1?'padre':'ancestro nivel '+x.d})`;
+    return`<div class="mo-row${k===0?' sel':''}" onclick="selectFusionDest('${x.i.root}',this)">
+      <input type="radio" name="fus_dest" value="${x.i.root}"${k===0?' checked':''}>
+      <span class="mo-lbl" style="color:${clr}">${nm(x.i.root)}</span>
+      <span class="mo-desc">${x.i.count} nodos · ${x.i.root_days}d<br><span style="color:#8b949e">${rel_txt}</span></span>
+    </div>`;}).join('');
+  const cortes=[...enLinea].map(nm);
+  const nota=cortes.length&&!todos?`<div style="color:#8b949e;font-size:10px;margin-top:6px">Ruta hacia arriba cortada en ${cortes.join(', ')} (en línea): lo que haya más arriba ya no depende de nodos caídos.</div>`:'';
+  const sinRel='<div style="color:#fbbf24;font-size:11px;margin-bottom:6px">Ningún evento activo contiene a un padre caído de este nodo.</div>';
+  const link=`<div style="margin-top:8px;font-size:10px"><a href="#" style="color:#58a6ff" onclick="renderFusionOpts(${todos?'false':'true'});return false">${todos?'Ver solo el evento de su ruta':'Ver todos los eventos (sin relación topológica)'}</a></div>`;
+  document.getElementById('fus-opts').innerHTML=(lista.length?filas:(todos?'':sinRel))+nota+link;
+}
 function abrirFusion(code){
   if(!resultados_global)return;
   const inc=resultados_global.incidencias.find(i=>i.root===code);
@@ -2838,14 +2946,7 @@ function abrirFusion(code){
   fusion_current=code;
   const nm=c=>(nodesGlobal[c]?.name||nodesGlobal[c]?.nombre||c).replace(/_/g,' ');
   document.getElementById('fus-titulo').textContent=nm(code)+' ('+inc.count+' nodo'+(inc.count!==1?'s':'')+')';
-  const cand=resultados_global.incidencias.filter(i=>i.root!==code);
-  document.getElementById('fus-opts').innerHTML=cand.length?cand.map((i,k)=>{
-    const clr=CAUSA_CLR[i.causa]||'#6b7280';
-    return`<div class="mo-row${k===0?' sel':''}" onclick="selectFusionDest('${i.root}',this)">
-      <input type="radio" name="fus_dest" value="${i.root}"${k===0?' checked':''}>
-      <span class="mo-lbl" style="color:${clr}">${nm(i.root)}</span>
-      <span class="mo-desc">${i.count} nodos · ${i.root_days}d</span>
-    </div>`;}).join(''):'<div style="color:#6b7280;font-size:11px">No hay otro evento al cual anexar.</div>';
+  renderFusionOpts(false);
   document.getElementById('fus-nota').value='';
   document.getElementById('modal-fus').classList.add('open');
 }
