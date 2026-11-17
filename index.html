@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Estado Red Acceso — Lambayeque v20</title>
+<title>Estado Red Acceso — Lambayeque v22</title>
 <script>
 // Implementación SHA-256 pura en JS (FIPS 180-4), sin dependencias.
 // Se usa en vez de crypto.subtle porque el archivo puede abrirse como
@@ -1158,14 +1158,14 @@ function draw(){
     const hasDist=NTD[id];
     const distCaido=hasDist&&fallen.has(hasDist);
     const isCore=nt.tipo==='CORE'||nt.tipo==='PASO'; // v20: nodos de paso = mismo estilo que Pucalá/Etén Puerto (azul, sin punto)
-    const r=Math.max(5,(isCore?13:9)*Math.min(sc,1.6));
+    const r=Math.max(5,(isCore?10.5:9)*Math.min(sc,1.6)); // v21: CORE/paso más medianos (antes 13)
     const _isBlk=blinkNtIds.has(id)&&!aislado;
     ctx.shadowColor=aislado?'#ef4444aa':(_isBlk&&!blinkPhase?'#f59e0baa':(isCore?'#3b82f688':'transparent'));
-    ctx.shadowBlur=aislado?18:(_isBlk&&!blinkPhase?16:(isCore?14:0));
+    ctx.shadowBlur=aislado?18:(_isBlk&&!blinkPhase?16:(isCore?9:0));
     ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
     ctx.fillStyle=aislado?'#1f0808':(nt.tipo==='INACTIVO'?'#2a2f36':'#1c2128');ctx.fill();
     ctx.strokeStyle=aislado?'#ef4444':(TC[nt.tipo]||'#64748b');
-    ctx.lineWidth=isCore?3:2;ctx.stroke();ctx.shadowBlur=0;
+    ctx.lineWidth=isCore?2.5:2;ctx.stroke();ctx.shadowBlur=0;
     if(hasDist){
       ctx.beginPath();ctx.arc(cx,cy,r*0.44,0,Math.PI*2);
       const isBlinking=blinkNtIds.has(id)&&!aislado&&!distCaido;
@@ -1521,6 +1521,18 @@ function causaOvrVigente(code,ia){
   }
   return o;
 }
+function limpiarFusionesCaducadas(ia){ // v22: 🔗 dura hasta "Deshacer" o hasta que se recupere/reinicie el nodo anexado O el evento destino
+  // Operativamente: el nodo anexado se reparó durante la avería masiva y la masiva lo oculta. Si la masiva (destino)
+  // se recupera, todo vuelve a la normalidad y la anexión se deshace sola; si el anexado vuelve a caer, se ve como
+  // evento individual o bajo su intermedio correspondiente.
+  let n=0;
+  for(const[code,f]of Object.entries(overrides_global.fusiones||{})){
+    const origenOk=ia[code]&&!(f&&f.on_time&&ia[code].on_time!==f.on_time);
+    const destinoOk=f&&ia[f.destino]&&!(f.destino_on_time&&ia[f.destino].on_time!==f.destino_on_time);
+    if(!origenOk||!destinoOk){delete overrides_global.fusiones[code];n++;}
+  }
+  return n;
+}
 function limpiarCausasCaducadas(ia){
   let n=0;
   for(const code of Object.keys(overrides_global.causas||{}))
@@ -1643,15 +1655,15 @@ function _calcularResolucionCompleta(nodes_all,sin_servicio,inf_alarms){
   //    alarma Infinera no refresca porque su padre sigue caído) se anexa a un
   //    evento masivo elegido por el operador. Salvaguardas de integridad:
   //    · solo se aplica si el nodo es hoy raíz de su propio evento;
-  //    · solo si la alarma sigue siendo LA MISMA (on_time guardado coincide) en
-  //      origen y destino — si la alarma cambió, la fusión caduca sola;
+  //    · solo si la alarma del ORIGEN sigue siendo LA MISMA (on_time guardado coincide);
+  //      si la alarma desaparece o se reinicia, la fusión se borra sola (v21);
   //    · nunca crea ciclos ni se auto-referencia.
   _fusionesAplicadas=new Set();
   const fus=(typeof overrides_global!=='undefined'&&overrides_global.fusiones)||{};
   for(const[code,f]of Object.entries(fus)){
     if(!f||!sin_servicio.has(code)||!sin_servicio.has(f.destino))continue;
     if(f.on_time&&inf_alarms[code]?.on_time!==f.on_time)continue;
-    if(f.destino_on_time&&inf_alarms[f.destino]?.on_time!==f.destino_on_time)continue;
+    if(f.destino_on_time&&inf_alarms[f.destino]?.on_time!==f.destino_on_time)continue; // destino reiniciado: la fusión caduca (se limpia al cargar)
     if(raizDe[code]!==code)continue;          // ya no es raíz de evento propio
     const destRoot=raizDe[f.destino];
     if(!destRoot||destRoot===code)continue;   // mismo evento o ciclo
@@ -2044,7 +2056,7 @@ async function cargarTodo(manual=false){
     const res=analizarIncidencias(nodes,inf_alarms,neteco_comm,neteco_energy);
     resultados_global=res;
     // v17: ✏️ de eventos ya terminados caducan solos (solo si hay alarmas leídas: un archivo vacío/erróneo no borra nada)
-    if(Object.keys(inf_alarms).length&&limpiarCausasCaducadas(inf_alarms)>0)guardarOverridesRemoto();
+    if(Object.keys(inf_alarms).length){const _a=limpiarCausasCaducadas(inf_alarms),_b=limpiarFusionesCaducadas(inf_alarms);if(_a+_b>0)guardarOverridesRemoto();}
     actualizarPanelGE();
     actualizarSimulador(res.sin_servicio);
   rebuildBlinkSet();
@@ -3000,8 +3012,9 @@ function renderPanelFusiones(){
   const nm=c=>(nodesGlobal[c]?.name||nodesGlobal[c]?.nombre||ACC[c]?.nombre||c).replace(/_/g,' ');
   cont.innerHTML=fus.map(([code,f])=>{
     const activa=_fusionesAplicadas.has(code);
+    const sinDest=!(resultados_global&&resultados_global.sin_servicio&&resultados_global.sin_servicio.has(f.destino));
     const estado=activa?'<span style="font-size:9px;color:#38bdf8">activa</span>'
-      :'<span style="font-size:9px;color:#6b7280;font-style:italic" title="La alarma cambió, el nodo ya no está caído o el evento destino ya no existe">inactiva</span>';
+      :'<span style="font-size:9px;color:#6b7280;font-style:italic" title="Se borra sola cuando el nodo anexado o el evento destino se recuperan en Infinera (en la próxima actualización), o cuando pulses Deshacer.">'+(sinDest?'destino recuperado — se deshará':'en espera')+'</span>';
     return`<div class="soc-item">
       <span class="soc-code" style="color:#38bdf8">${code}</span>
       <span class="soc-name">${nm(code)} → ${nm(f.destino)}${f.nota?` <span style="color:#6b7280;font-size:10px">· ${f.nota}</span>`:''}</span>
